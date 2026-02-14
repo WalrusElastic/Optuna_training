@@ -4,11 +4,14 @@ Extract YOLO training/eval results to CSV and JSON, and loss graph PNGs.
 
 import csv
 import json
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import matplotlib.pyplot as plt
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 

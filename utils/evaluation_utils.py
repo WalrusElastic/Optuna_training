@@ -2,6 +2,7 @@
 YOLO segmentation evaluation: IoU, label loading, metrics, and test runner.
 """
 
+import logging
 import os
 import shutil
 from pathlib import Path
@@ -12,6 +13,8 @@ from shapely.geometry import Polygon
 from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 
 from ultralytics import YOLO
+
+logger = logging.getLogger(__name__)
 
 
 class YOLOSegmentationEvaluator:

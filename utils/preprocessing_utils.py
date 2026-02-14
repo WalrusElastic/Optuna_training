@@ -2,6 +2,7 @@
 Image and label preprocessing utilities for YOLO training pipeline.
 """
 
+import logging
 import os
 import shutil
 from typing import List, Tuple
@@ -9,6 +10,8 @@ from typing import List, Tuple
 import cv2
 import numpy as np
 import albumentations as A
+
+logger = logging.getLogger(__name__)
 
 
 class PreprocessingUtils:

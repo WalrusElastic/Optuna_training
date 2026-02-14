@@ -2,11 +2,14 @@
 YOLO dataset utilities for training.
 """
 
+import logging
 from typing import List
 
 import numpy as np
 
 from ultralytics.data.dataset import YOLODataset
+
+logger = logging.getLogger(__name__)
 
 
 class YOLOWeightedDataset(YOLODataset):

@@ -3,9 +3,12 @@ Optuna trial management and study persistence utilities.
 """
 
 import json
+import logging
 import optuna
 from pathlib import Path
 from typing import Dict
+
+logger = logging.getLogger(__name__)
 
 
 class OptunaTrialManager:
@@ -105,7 +108,7 @@ class OptunaTrialManager:
                 trials_data = json.load(f)
 
         if trials_data:
-            print(f"Loading {len(trials_data)} existing trials...")
+            logger.info(f"Loading {len(trials_data)} existing trials...")
 
             for t_data in trials_data:
                 distributions = {}
