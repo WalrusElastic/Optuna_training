@@ -1,0 +1,87 @@
+import os
+from pathlib import Path
+from typing import Dict, List
+
+
+class TrainingConfig:
+    """
+    Centralized configuration for paths, training parameters and class metadata.
+    """
+
+    def __init__(self):
+        # Study / logging configuration
+        self.study_name: str = "test_study"  # Name of the study
+
+        # Central list of all class names used in training / evaluation
+        self.classes: List[str] = ["Class_1", "Class_2", "Class_3", "Class_4"]
+
+        # Root dir where this config file (and training scripts) are located
+        root: Path = Path(os.path.dirname(os.path.realpath(__file__)))
+
+        self.paths: Dict[str, Path] = {
+            "root": root,
+            "default_model_weights": root / "yolo11n-seg.pt",
+            "runs_dir": root / "runs",
+            "split_dataset": root / "split_dataset",
+            "final_dataset": root / "Final_dataset",
+            "test_dataset": (root / "Final_dataset") / "test",
+            "yolo_yaml": root / "data.yaml",
+            "optuna_json": root / f"{self.study_name}_optuna_storage.json",
+            "output_csv": root / f"{self.study_name}_output.csv",
+            "output_json": root / f"{self.study_name}_output.json",
+        }
+
+        self.yolo_parameters: Dict = {
+            "data": str(self.paths["yolo_yaml"]),
+            "epochs": 1, # NOTE: change back once done
+            "patience": 50,
+            "batch": 8,
+            "save": True,
+            "save_period": 0,
+            "device": 0,  # NOTE: change back once done
+            "imgsz": 1024,
+            "project": str(self.paths["runs_dir"]),
+            "exist_ok": True,
+            "optimizer": "adamW",
+            "verbose": True,
+            "seed": 42,
+            "resume": False,
+            "freeze": None,
+            "dropout": 0.03,
+            "val": True,
+            "plots": True,
+            "augment": True,
+            "amp": False,
+            "cache": True,
+            "workers": 0,
+            "lr0": 0.00029076,
+            "lrf": 0.000326,
+            "momentum": 0.70496,
+            "weight_decay": 0.1051539,
+            "hsv_h": 0.015,
+            "hsv_s": 0.7,
+            "hsv_v": 0.4,
+            "degrees": 0.0,
+            "translate": 0.1,
+            "scale": 0.5,
+            "shear": 0.0,
+            "perspective": 0.0,
+            "flipud": 0.0,
+            "fliplr": 0.5,
+            "bgr": 0,
+            "mosaic": 0.7251009743589250,
+            "mixup": 0.3047758740425330,
+            "cutmix": 0.19502787808654200,
+            "copy_paste": 0.08030030302605730,
+            "copy_paste_mode": "mixup",
+            "box": 4.668834351,
+            "cls": 1.299902183,
+            "dfl": 3.942576859,
+        }
+
+        self.additional_parameters: Dict = {
+            "brightness": -0.12655,
+            "contrast": 0.18471,
+            "sharpness": 0.15792,
+        }
+
