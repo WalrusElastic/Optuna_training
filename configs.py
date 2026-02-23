@@ -23,17 +23,17 @@ class TrainingConfig:
 
         self.paths: Dict[str, Path] = {
             "root": root,
-            "default_model_weights": root / "yolo11n-seg.pt",
-            "runs_dir": root / "runs",
-            "split_dataset": root / "split_dataset",
-            "final_dataset": root / "Final_dataset",
-            "test_dataset": (root / "Final_dataset") / "test",
-            "yolo_yaml": root / "data.yaml",
-            "optuna_json": root / f"{self.study_name}_optuna_storage.json",
-            "output_csv": root / f"{self.study_name}_output.csv",
-            "output_json": root / f"{self.study_name}_output.json",
+            "default_model_weights": root / "yolo11n-seg.pt", # Path to model weights
+            "runs_dir": root / "runs", # Path to store training runs
+            "split_dataset": root / "split_dataset", # Path to dataset after splitting into train/val/test
+            "final_dataset": root / "Final_dataset", # Path to dataset after preprocessing
+            "yolo_yaml": root / "data.yaml", # Path to YOLO data.yaml file, to be generated
+            "optuna_json": root / f"{self.study_name}_optuna_storage.json", # Path to Optuna storage json file
+            "output_csv": root / f"{self.study_name}_output.csv", # Path to output CSV file with study
+            "output_json": root / f"{self.study_name}_output.json", # Path to output JSON file with study
         }
 
+        # Default parameters for YOLO training, to be overridden by Optuna trials
         self.yolo_parameters: Dict = {
             "data": str(self.paths["yolo_yaml"]),
             "epochs": 1, # NOTE: change back once done
@@ -82,6 +82,7 @@ class TrainingConfig:
             "dfl": 3.942576859,
         }
 
+        # Additional parameters that are not directly part of YOLO training but are relevant for the overall pipeline. Can be overridden by Optuna trials if needed.
         self.additional_parameters: Dict = {
             "brightness": -0.12655,
             "contrast": 0.18471,

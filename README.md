@@ -6,9 +6,8 @@ This is an **Optuna-based hyperparameter optimization pipeline** for training YO
 
 The pipeline is designed to:
 - **Optimize custom hyperparameters** (e.g., brightness, contrast, sharpness, mosaic ratio, mixup) using Optuna's Bayesian optimization
-- **Automatically track and compare trials** across multiple runs
 - **Generate comprehensive metrics** including per-class precision, recall, and mAP scores
-- **Produce visualizations** such as loss curves and confusion matrices
+- **Automatically track and compare trials** across multiple runs
 - **Save detailed results** in CSV and JSON formats for analysis
 
 ## Quick Start
@@ -18,7 +17,7 @@ The pipeline is designed to:
 1. **Python 3.10+** with PyTorch and CUDA support
 2. **Required packages**:
    ```bash
-   pip install optuna ultralytics albumentations pyyaml pandas seaborn scikit-image shapely
+   pip install -r requirements.txt
    ```
 
 ### Setup
@@ -28,9 +27,8 @@ The pipeline is designed to:
    optuna_train_pipeline/
    ├── train.py                    (main script - modify optuna "objective" function for customised optimisation)
    ├── configs.py                  (configure paths and default parameters here)
-   ├── data.yaml                   (generated automatically)
    ├── yolo11n-seg.pt             (your pretrained YOLO model weights)
-   ├── split_dataset/             (input: train/val/test splits)
+   ├── split_dataset/             (input: train/val/test splits (in yolo seg format))
    │   ├── train/
    │   │   ├── images/
    │   │   └── labels/
@@ -40,11 +38,6 @@ The pipeline is designed to:
    │   └── test/
    │       ├── images/
    │       └── labels/
-   ├── Final_dataset/             (generated during preprocessing)
-   │   ├── train/
-   │   ├── val/
-   │   └── test/
-   ├── runs/                       (generated: trial outputs)
    ├── utils/                      (utility modules)
    │   ├── preprocessing_utils.py
    │   ├── yolo_dataset_utils.py
@@ -94,7 +87,7 @@ The pipeline is designed to:
    def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
        # ...
        
-       # Uncomment parameters to optimize:
+       # optimize preprocessing:
        brightness = trial.suggest_float("brightness", 0.2, 0.5)
        contrast = trial.suggest_float("contrast", 0.1, 0.4)
        sharpness = trial.suggest_float("sharpness", 0.3, 0.8)
@@ -104,9 +97,9 @@ The pipeline is designed to:
        additional_parameters["contrast"] = contrast
        additional_parameters["sharpness"] = sharpness
        
-       # You can also optimize YOLO parameters:
-       # mosaic = trial.suggest_float("mosaic", 0.0, 1.0)
-       # params["mosaic"] = mosaic
+       # You can also optimize YOLO parameters, which are logged from the params dict after model.train:
+       mosaic = trial.suggest_float("mosaic", 0.0, 1.0)
+       params["mosaic"] = mosaic
        
        # ... rest of function
    ```
@@ -117,14 +110,14 @@ The pipeline is designed to:
 python train.py
 ```
 
-The script will:
-1. **Preprocess** the dataset (augmentation, splits)
-2. **Train** the YOLO model for one trial
-3. **Evaluate** on validation and test sets
-4. **Extract metrics** per class and overall
-5. **Save results** to CSV, JSON, and visualizations
+The script will run an optuna pipeline to optimise model performance accross a set of trials. Each trial will:
+1. **Suggest** Parameters for optimization (**NEED TO CUSTOMISE IN train.py**)
+2. **Preprocess** the dataset (augmentation, splits)
+3. **Train** the YOLO model for one trial
+4. **Evaluate** on validation and test sets
+5. **Extract metrics** per class and overall
+6. **Save results** to CSV, JSON, and visualizations
 
-### Single Trial vs. Multiple Trials
 
 Currently, the pipeline runs **1 trial at a time** for testing purposes. To run multiple optimization trials:
 
@@ -174,7 +167,7 @@ The pipeline optimizes based on:
    params["my_param"] = my_param
    ```
 
-3. Results will automatically be logged in CSV and JSON outputs
+3.log results in appropriate dictionary to be captured in CSV and JSON outputs
 
 ### Change Evaluation Metric
 
