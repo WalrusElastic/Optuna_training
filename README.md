@@ -26,15 +26,18 @@ The pipeline is designed to:
 1. **Prepare your folder structure**:
    ```
    optuna_train_pipeline/
-   ├── train.py                    (main script - do not modify)
-   ├── configs.py                  (configure paths and parameters here)
+   ├── train.py                    (main script - modify optuna "objective" function for customised optimisation)
+   ├── configs.py                  (configure paths and default parameters here)
    ├── data.yaml                   (generated automatically)
    ├── yolo11n-seg.pt             (your pretrained YOLO model weights)
-   ├── split_dataset/             (input: train/val splits)
+   ├── split_dataset/             (input: train/val/test splits)
    │   ├── train/
    │   │   ├── images/
    │   │   └── labels/
    │   └── val/
+   │       ├── images/
+   │       └── labels/
+   │   └── test/
    │       ├── images/
    │       └── labels/
    ├── Final_dataset/             (generated during preprocessing)
@@ -58,7 +61,7 @@ The pipeline is designed to:
            self.study_name = "my_study"          # Study name for tracking
            self.classes = ["dog", "cat", "bird"]  # Your class names
            
-           # Paths (relative to configs.py location)
+           # Paths (relative to configs.py location. Optional to configure)
            self.paths = {
                "default_model_weights": root / "yolo11n-seg.pt",
                "split_dataset": root / "split_dataset",
@@ -67,7 +70,7 @@ The pipeline is designed to:
                ...
            }
            
-           # YOLO training parameters
+           # YOLO training default parameters
            self.yolo_parameters = {
                "epochs": 10,
                "batch": 8,
