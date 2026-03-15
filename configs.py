@@ -89,3 +89,9 @@ class TrainingConfig:
             "sharpness": 0.15792,
         }
 
+        # weight scale for YOLOWeightedDataset, to be used for class balancing in the dataset. 1.0 means the weight for each class is directly proportional to the inverse of its frequency. >1 exaggerates the weighting effect, <1 smooths it out.
+        self.yolo_dataset_parameters: Dict = {
+            "weight_scale": 1.2,
+        }
+
+

@@ -174,10 +174,21 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
         input_size=512, output_size=1024
     )
     
+    # ========================== WEIGHTED DATASET ==========================
+    # Set weight_scale for balanced-label sampling in YOLOWeightedDataset.
+    weight_scale = config.yolo_dataset_parameters["weight_scale"]
+    # weight_scale = trial.suggest_float("weight_scale", 0.5, 2.0)
+    YOLOWeightedDataset.default_weight_scale = weight_scale
+
+    logger.info(f"[Trial {trial.number}] Using YOLOWeightedDataset weight_scale={weight_scale}")
+    # log weight scale value used
+    additional_parameters["weight_scale"] = weight_scale
+
+    build.YOLODataset = YOLOWeightedDataset
+
     # ========================== TRAINING ==========================
     logger.info(f"[Trial {trial.number}] Starting training phase")
-    # Override the default YOLO dataset class with our weighted dataset for balanced sampling
-    build.YOLODataset = YOLOWeightedDataset
+
     # Load the pre-trained YOLO model from the specified weights path
     model = YOLO(str(config.paths["default_model_weights"]))
     logger.info(f"[Trial {trial.number}] Model loaded from {config.paths['default_model_weights']}")
