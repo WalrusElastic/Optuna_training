@@ -15,11 +15,11 @@ logger = logging.getLogger(__name__)
 
 
 
-class YOLODataExtractor:
+class DataLogger:
     """Utility class for extracting and saving YOLO training/evaluation results."""
 
     @staticmethod
-    def append_to_csv(file_path: Path, data_dict: Dict) -> None:
+    def save_to_csv(file_path: Path, data_dict: Dict) -> None:
         """
         Append a dictionary as a new row to CSV file.
 
@@ -53,19 +53,38 @@ class YOLODataExtractor:
             writer.writerow(data_dict)
 
     @staticmethod
-    def save_results_to_json(
+    def save_to_json(
         output_json_path: Path,
         trial_number: int,
-        training_params: Dict,
-        additional_parameters: Dict,
-        additional_metrics: Dict,
-        metrics: Optional[Dict] = None,
+        params: Dict,
+        metrics: Dict,
     ) -> None:
         """
-        Save trial results (parameters and metrics) to JSON file.
+        Save a trial's results to a JSON file using a parameter dict.
 
-        Loads existing trials if file exists, appends new result, overwrites file.
-        Output structure: {"trials": [{trial_number, training_parameters, ...}, ...]}.
+        Parameters
+        ----------
+        output_json_path : Path
+            Location of the JSON file to update.
+        params : Dict
+            Dictionary containing any keys you wish to record (e.g.
+            ``trial_number``, ``training_parameters``,
+            ``augmentation_parameters``, ``additional_metrics``).
+        metrics : Optional[Dict]
+            A separate dictionary of evaluation/test metrics. These will be
+            stored under the ``"test_metrics"`` key in the entry.
+
+        The file structure is::
+
+            {
+                "trials": [
+                    [trial_number, params, metrics],
+                    ...
+                ]
+            }
+
+        Existing files are loaded and the new entry appended; otherwise a
+        new container is created.
         """
         output_json_path = Path(output_json_path)
         if metrics is None:
@@ -77,49 +96,8 @@ class YOLODataExtractor:
         else:
             all_results = {"trials": []}
 
-        result_entry = {
-            "trial_number": trial_number,
-            "training_parameters": training_params,
-            "augmentation_parameters": additional_parameters,
-            "additional_metrics": additional_metrics,
-            "test_metrics": metrics,
-        }
-        all_results["trials"].append(result_entry)
+
+        all_results["trials"].append([trial_number, params, metrics])
 
         with open(output_json_path, "w") as f:
             json.dump(all_results, f, indent=2)
-
-    @staticmethod
-    def extract_loss_graphs(folder_path: Path) -> None:
-        """
-        Extract loss curves from training results.csv and save as PNG graphs.
-
-        Reads folder_path/results.csv, plots train/val for box, seg, cls, dfl loss,
-        saves PNGs to folder_path/test_results/. Clips loss values to 10.0.
-        """
-        folder_path = Path(folder_path)
-        file_path = folder_path / "results.csv"
-        df = pd.read_csv(file_path)
-
-        pairs = [
-            ("train/box_loss", "val/box_loss"),
-            ("train/seg_loss", "val/seg_loss"),
-            ("train/cls_loss", "val/cls_loss"),
-            ("train/dfl_loss", "val/dfl_loss"),
-        ]
-
-        output_dir = folder_path / "test_results"
-        output_dir.mkdir(exist_ok=True)
-
-        for pair in pairs:
-            x_data = df["epoch"]
-            y1 = df[pair[0]].clip(upper=10)
-            y2 = df[pair[1]].clip(upper=10)
-            plt.figure(figsize=(8, 6))
-            plt.plot(x_data, y1, label=pair[0])
-            plt.plot(x_data, y2, label=pair[1])
-            plt.title(pair[0][6:])
-            plt.legend()
-            plt.grid(True)
-            plt.savefig(output_dir / f"{pair[0][6:]}.png")
-            plt.close()

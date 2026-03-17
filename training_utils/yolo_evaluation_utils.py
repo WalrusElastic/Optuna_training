@@ -7,6 +7,7 @@ import os
 import shutil
 from pathlib import Path
 from typing import Dict, List, Tuple
+import pandas as pd
 
 import matplotlib.pyplot as plt
 from shapely.geometry import Polygon
@@ -213,3 +214,41 @@ class YOLOSegmentationEvaluator:
         plt.tight_layout()
         plt.savefig(save_path, dpi=200)
         plt.close()
+    
+    @staticmethod
+    def extract_loss_graphs(folder_path: Path) -> None:
+        """
+        Extract loss curves from training results.csv and save as PNG graphs.
+
+        Reads folder_path/results.csv, plots train/val for box, seg, cls, dfl loss,
+        saves PNGs to folder_path/test_results/. Clips loss values to 10.0.
+        """
+        folder_path = Path(folder_path)
+        file_path = folder_path / "results.csv"
+        df = pd.read_csv(file_path)
+
+        pairs = [
+            ("train/box_loss", "val/box_loss"),
+            ("train/seg_loss", "val/seg_loss"),
+            ("train/cls_loss", "val/cls_loss"),
+            ("train/dfl_loss", "val/dfl_loss"),
+        ]
+
+        output_dir = folder_path / "test_results"
+        output_dir.mkdir(exist_ok=True)
+
+        for pair in pairs:
+            x_data = df["epoch"]
+            y1 = df[pair[0]].clip(upper=10)
+            y2 = df[pair[1]].clip(upper=10)
+            plt.figure(figsize=(8, 6))
+            plt.plot(x_data, y1, label=pair[0])
+            plt.plot(x_data, y2, label=pair[1])
+            plt.title(pair[0][6:])
+            plt.legend()
+            plt.grid(True)
+            plt.savefig(output_dir / f"{pair[0][6:]}.png")
+            plt.close()
+
+
+    

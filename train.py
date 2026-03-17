@@ -26,11 +26,11 @@ import seaborn as sns
 import albumentations as A
 
 from configs import TrainingConfig
-from utils.preprocessing_utils import PreprocessingUtils
-from utils.yolo_dataset_utils import YOLOWeightedDataset
-from utils.evaluation_utils import YOLOSegmentationEvaluator
-from utils.extract_yolo_data_utils import YOLODataExtractor
-from utils.optuna_utils import OptunaTrialManager
+from training_utils.preprocessing_utils import PreprocessingUtils
+from training_utils.yolo_dataset_utils import YOLOWeightedDataset
+from training_utils.yolo_evaluation_utils import YOLOSegmentationEvaluator
+from training_utils.data_logging_utils import DataLogger
+from training_utils.optuna_utils import OptunaTrialManager
 
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "..")))
 os.environ["ALBUMENTATIONS_DISABLE"] = "1"
@@ -147,12 +147,11 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
     # Copy the additional parameters from config to modify locally
     additional_parameters = config.additional_parameters
 
-    # Extract brightness parameter for augmentation (currently fixed, can be optimized)
+    # Extract brightness, contrast and sharpness parameters for preprocessing
     brightness = additional_parameters["brightness"]
-    # Extract contrast parameter for augmentation
     contrast = additional_parameters["contrast"]
-    # Extract sharpness parameter for augmentation
     sharpness = additional_parameters["sharpness"]
+    
     # Placeholder for future parameter optimization with Optuna
     # brightness = trial.suggest_float("brightness", 0.2, 0.5) # Example of how to suggest a new parameter with Optuna
     # additional_parameters["brightness"] = brightness # Example of how to update the storage dict with the new suggested value for logging and saving purposes
@@ -287,36 +286,42 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
     logger.info(f"[Trial {trial.number}] Creating confusion matrix")
     # Generate and save the confusion matrix visualization
     YOLOSegmentationEvaluator.create_confusion_matrix(
-        all_true, all_pred, trial_path / "test_results" / "confusion_matrix.png", config.classes
+        all_true, 
+        all_pred, 
+        trial_path / "test_results" / "confusion_matrix.png", 
+        config.classes
     )
     logger.info(f"[Trial {trial.number}] Test evaluation completed")
     
     # ========================== LOGGING ==========================
     logger.info(f"[Trial {trial.number}] Extracting loss graphs and saving results")
     # Extract and save loss graphs from training results
-    YOLODataExtractor.extract_loss_graphs(trial_path)
+    YOLOSegmentationEvaluator.extract_loss_graphs(trial_path)
 
     logger.info(f"[Trial {trial.number}] Saving results to JSON")
+
+    # Collecting all parameters and metrics into comprehensive dictionaries for logging
+    total_parameters = params.copy()
+    total_parameters.update(additional_parameters)
+    total_metrics = additional_metrics.copy()
+    total_metrics.update(test_metrics)
+    
     # Save detailed trial results to JSON file
-    YOLODataExtractor.save_results_to_json(
+    DataLogger.save_to_json(
         config.paths["output_json"],
         trial.number,
-        params,
-        additional_parameters,
-        additional_metrics,
-        test_metrics,
+        total_parameters,
+        total_metrics,
     )
 
     # Prepare a row of data for CSV logging
     row_to_write = {"path": str(trial_path)}
-    row_to_write.update(params)
-    row_to_write.update(config.additional_parameters)
-    row_to_write.update(additional_metrics)
-    row_to_write.update(test_metrics)
+    row_to_write.update(total_parameters)
+    row_to_write.update(total_metrics)
     
     logger.info(f"[Trial {trial.number}] Saving results to CSV")
     # Append the row to the CSV file
-    YOLODataExtractor.append_to_csv(config.paths["output_csv"], row_to_write)
+    DataLogger.save_to_csv(config.paths["output_csv"], row_to_write)
 
     logger.info(f"[Trial {trial.number}] Saving Optuna data to JSON")
     # Save trial information for Optuna persistence
