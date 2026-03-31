@@ -7,3 +7,5 @@ rf-detr-nano.pth
 test_study_optuna_storage.json
 test_study_output.csv
 test_study_output.json
+venv
+lin_wheels/
