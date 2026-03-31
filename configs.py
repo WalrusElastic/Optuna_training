@@ -23,13 +23,18 @@ class TrainingConfig:
         # Root dir where this config file (and training scripts) are located
         root: Path = Path(os.path.dirname(os.path.realpath(__file__)))
 
+        # GPU configuration, NOTE: For windows systems, num_gpus is defaulted to 1 regardless of initial configs due to issues with torch distributed.
+        self.num_gpus: int = 1
+
         self.paths: Dict[str, Path] = {
             "root": root,
             "pretrained_model_weights": root / "rf-detr-nano.pth", # Path to model weights
+            "training_worker_script": root / "utils" / "rf_detr_distributed_worker.py", # Path to distributed worker script
             "runs_dir": root / "runs", # Path to store training runs
             "split_dataset": root / "split_dataset", # Path to dataset after splitting into train/val/test
             "final_dataset": root / "Final_dataset", # Path to dataset after preprocessing
             "yolo_yaml": root / "Final_dataset" / "data.yaml", # Path to YOLO data.yaml file, to be generated
+            "params_json": root / "training_params.json", # Path to JSON file where training parameters will be saved for the worker script to consume. Generated each trial
             "optuna_json": root / f"{self.study_name}_optuna_storage.json", # Path to Optuna storage json file
             "output_csv": root / f"{self.study_name}_output.csv", # Path to output CSV file with study
             "output_json": root / f"{self.study_name}_output.json", # Path to output JSON file with study
@@ -40,7 +45,7 @@ class TrainingConfig:
             # Basic training parameters
             "dataset_dir": str(self.paths["final_dataset"]),
             "output_dir": None, #NOTE To be set to trial-specific output dir during training
-            "device": "cuda",
+            "devices": "auto", 
             "batch_size": 1,
             "grad_accum_steps": 4,
             "epochs": 3, #NOTE Set to 3 for testing

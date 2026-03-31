@@ -12,10 +12,12 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import json
+import time
 import math
 import random
 from tqdm import tqdm
 import shutil
+import subprocess
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -33,7 +35,8 @@ from utils.optuna_utils import OptunaTrialManager
 
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "..")))
 os.environ["ALBUMENTATIONS_DISABLE"] = "1"
-from rfdetr import RFDETRNano
+os.environ["USE_LIBUV"] = "0" # Disable libuv to prevent potential issues with subprocesses in Windows environments
+
 
 # Setup logging
 logging.basicConfig(
@@ -171,9 +174,6 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
 
     # ========================== TRAINING ==========================
     logger.info(f"[Trial {trial.number}] Starting training phase")
-    model = RFDETRNano(pretrain_weights=str(config.paths["pretrained_model_weights"]))
-    logger.info(f"[Trial {trial.number}] Model loaded from {config.paths['pretrained_model_weights']}")
-     
     default_params = config.rfdetr_parameters
 
     training_params = {}
@@ -183,13 +183,76 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
     combined_params = {**default_params, **additional_parameters}
     
     logger.info(f"[Trial {trial.number}] Starting RF-DETR training with {default_params['epochs']} epochs")
-    # Assuming model.train takes dataset paths or similar
-    model.train(**training_params)
-    logger.info(f"[Trial {trial.number}] Training completed successfully")
+    trial_path.mkdir(parents=True, exist_ok=True)
 
+    params_json_path = config.paths["params_json"]
+    if params_json_path.exists():
+        logger.info(f"Removing existing params JSON file at {params_json_path}")
+        params_json_path.unlink()
+    with open(params_json_path, "w") as f:
+        json.dump(training_params, f, indent=2)
+
+    training_start_time = time.time()
+    if sys.platform == "win32":
+        logger.info(f"[Trial {trial.number}] Running on Windows: using direct subprocess (no torch.distributed)")
+        launch_cmd = [
+            sys.executable,
+            str(config.paths["training_worker_script"]),
+            "--pretrain-weights",
+            str(config.paths["pretrained_model_weights"]),
+            "--params-json",
+            str(params_json_path),
+        ]
+        logger.info(f"[Trial {trial.number}] Launching training: {' '.join(launch_cmd)}")
+        proc = subprocess.run(
+            launch_cmd,
+            cwd=str(config.paths["root"]),
+        )
+        if proc.returncode != 0:
+            logger.error(f"[Trial {trial.number}] Training subprocess failed with code {proc.returncode}")
+            raise RuntimeError(
+                f"Training subprocess failed with return code {proc.returncode}. "
+                "Check console output above for details."
+            )
+    else:
+        logger.info(f"[Trial {trial.number}] Running on Linux: using torch.distributed.run")
+        launch_cmd = [
+            sys.executable,
+            "-m",
+            "torch.distributed.run",
+            f"--nproc_per_node={config.num_gpus}",
+            str(config.paths["training_worker_script"]),
+            "--pretrain-weights",
+            str(config.paths["pretrained_model_weights"]),
+            "--params-json",
+            str(params_json_path),
+        ]
+        logger.info(f"[Trial {trial.number}] Launching distributed training: {' '.join(launch_cmd)}")
+        proc = subprocess.run(
+            launch_cmd,
+            cwd=str(config.paths["root"]),
+        )
+        if proc.returncode != 0:
+            logger.error(f"[Trial {trial.number}] Training subprocess failed with code {proc.returncode}")
+            raise RuntimeError(
+                f"Training subprocess failed with return code {proc.returncode}. "
+                "Check console output above for details."
+            )
+    logger.info(f"[Trial {trial.number}] Training completed successfully")
+    training_end_time = time.time()
+    training_time = training_end_time - training_start_time
     # ========================== EXTRACTING METRICS ==========================
     rf_detr_log_path = trial_path / "log.txt"  # Assuming RF-DETR saves a training log with metrics
     best_epoch = RFDETRExtractor.get_best_epoch(rf_detr_log_path)
+    last_epoch = RFDETRExtractor.get_final_epoch(rf_detr_log_path)
+    logger.info(f"[Trial {trial.number}] Best epoch identified: {best_epoch}")
+    logger.info(f"[Trial {trial.number}] Final epoch identified: {last_epoch}")
+    logger.info(f"[Trial {trial.number}] {last_epoch} epochs completed in {training_time:.2f} seconds, average time per epoch: {training_time/last_epoch:.2f} seconds")
+
+
+
+    logger.info(f"[Trial {trial.number}] Extracting validation and test results from RF-DETR output")  
+    
 
     rf_detr_restults_path = trial_path/ "results.json"  # Assuming RF-DETR saves a results.json with validation/test metrics
     validation_results, test_results = RFDETRExtractor.get_validation_and_test_results(rf_detr_restults_path)

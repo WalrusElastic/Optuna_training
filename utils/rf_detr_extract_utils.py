@@ -37,6 +37,31 @@ class RFDETRExtractor:
         return best_epoch
     
     @staticmethod
+    def get_final_epoch(log_file_path):
+        """
+        Read the log file and return the last 'epoch' value.
+        
+        Args:
+            log_file_path (str or Path): Path to the log.txt file.
+        Returns:
+            int: The final epoch from the last entry.
+        """
+        log_file = Path(log_file_path)
+        final_epoch = None
+        
+        with open(log_file, 'r') as f:
+            for line in f:
+                if line.strip():
+                    try:
+                        data = json.loads(line.strip())
+                        if 'epoch' in data:
+                            final_epoch = data['epoch']
+                    except json.JSONDecodeError:
+                        continue  # Skip invalid JSON lines
+        
+        return final_epoch
+    
+    @staticmethod
     def combine_dictionaries(results_list):
         """
         Flatten a list of result dictionaries into a single flat dictionary.
