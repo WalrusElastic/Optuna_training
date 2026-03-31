@@ -51,7 +51,7 @@ class TrainingConfig:
             "epochs": 3, #NOTE Set to 3 for testing
             "resolution": 512, #NOTE: Set to 512 for testing
             "early_stopping": True,
-            "early_stopping_patience": 10,
+            "early_stopping_patience": 1, #NOTE: Set to 1 for testing. Defaults to 10
             "early_stopping_min_delta": 0.5, #NOTE Set to 0.5 for testing. Defaults to 0.001
 
             # # Learning rates
