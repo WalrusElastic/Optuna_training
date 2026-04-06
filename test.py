@@ -1,3 +1,7 @@
+"""
+Script to test imports and loading of model weights
+"""
+
 import logging
 import optuna
 from optuna.visualization import plot_optimization_history, plot_param_importances
@@ -7,10 +11,12 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import json
+import time
 import math
 import random
 from tqdm import tqdm
 import shutil
+import subprocess
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,4 +34,7 @@ from utils.optuna_utils import OptunaTrialManager
 
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "..")))
 os.environ["ALBUMENTATIONS_DISABLE"] = "1"
+os.environ["USE_LIBUV"] = "0" # Disable libuv to prevent potential issues with subprocesses in Windows environments
 from rfdetr import RFDETRNano
+model = RFDETRNano(pretrain_weights="rf-detr-nano.pth")
+model = None

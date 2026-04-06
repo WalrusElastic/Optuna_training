@@ -1,0 +1,167 @@
+[
+  {
+    "filename": "rf-detr-base.pth",
+    "url": "https://storage.googleapis.com/rfdetr/rf-detr-base-coco.pth",
+    "source": "ModelWeights",
+    "expected_md5": "b4d3ce46099eaed50626ede388caf979",
+    "path": "C:\\Users\\chenk_lsttb06\\OneDrive\\Documents\\scvu stuff\\rf_detr_testing\\rfdetr_weights\\rf-detr-base.pth",
+    "actual_md5": "b4d3ce46099eaed50626ede388caf979",
+    "size_bytes": 372578043,
+    "status": "ok",
+    "md5_match": true
+  },
+  {
+    "filename": "rf-detr-base-o365.pth",
+    "url": "https://storage.googleapis.com/rfdetr/top-secret-1234/lwdetr_dinov2_small_o365_checkpoint.pth",
+    "source": "ModelWeights",
+    "expected_md5": "d93f4921ccbb0f0a2e4364bed290892b",
+    "path": "C:\\Users\\chenk_lsttb06\\OneDrive\\Documents\\scvu stuff\\rf_detr_testing\\rfdetr_weights\\rf-detr-base-o365.pth",
+    "actual_md5": "d93f4921ccbb0f0a2e4364bed290892b",
+    "size_bytes": 384452411,
+    "status": "ok",
+    "md5_match": true
+  },
+  {
+    "filename": "rf-detr-base-2.pth",
+    "url": "https://storage.googleapis.com/rfdetr/rf-detr-base-2.pth",
+    "source": "ModelWeights",
+    "expected_md5": "462f4d9df407ddc1812f42614040e913",
+    "path": "C:\\Users\\chenk_lsttb06\\OneDrive\\Documents\\scvu stuff\\rf_detr_testing\\rfdetr_weights\\rf-detr-base-2.pth",
+    "actual_md5": "462f4d9df407ddc1812f42614040e913",
+    "size_bytes": 501469986,
+    "status": "ok",
+    "md5_match": true
+  },
+  {
+    "filename": "rf-detr-large.pth",
+    "url": "https://storage.googleapis.com/rfdetr/rf-detr-large.pth",
+    "source": "ModelWeights",
+    "expected_md5": "992c8e862aa733a7bb2777e45d49f1a0",
+    "path": "C:\\Users\\chenk_lsttb06\\OneDrive\\Documents\\scvu stuff\\rf_detr_testing\\rfdetr_weights\\rf-detr-large.pth",
+    "actual_md5": "992c8e862aa733a7bb2777e45d49f1a0",
+    "size_bytes": 1571684963,
+    "status": "ok",
+    "md5_match": true
+  },
+  {
+    "filename": "rf-detr-large-2026.pth",
+    "url": "https://storage.googleapis.com/rfdetr/rf-detr-large-2026.pth",
+    "source": "ModelWeights",
+    "expected_md5": "5cb72153541cbcb9aa6efa26222acc75",
+    "path": "C:\\Users\\chenk_lsttb06\\OneDrive\\Documents\\scvu stuff\\rf_detr_testing\\rfdetr_weights\\rf-detr-large-2026.pth",
+    "actual_md5": "5cb72153541cbcb9aa6efa26222acc75",
+    "size_bytes": 135954129,
+    "status": "ok",
+    "md5_match": true
+  },
+  {
+    "filename": "rf-detr-nano.pth",
+    "url": "https://storage.googleapis.com/rfdetr/nano_coco/checkpoint_best_regular.pth",
+    "source": "ModelWeights",
+    "expected_md5": "fb6504cce7fbdc783f7a46991f07639f",
+    "path": "C:\\Users\\chenk_lsttb06\\OneDrive\\Documents\\scvu stuff\\rf_detr_testing\\rfdetr_weights\\rf-detr-nano.pth",
+    "actual_md5": "fb6504cce7fbdc783f7a46991f07639f",
+    "size_bytes": 366287238,
+    "status": "ok",
+    "md5_match": true
+  },
+  {
+    "filename": "rf-detr-small.pth",
+    "url": "https://storage.googleapis.com/rfdetr/small_coco/checkpoint_best_regular.pth",
+    "source": "ModelWeights",
+    "expected_md5": "fb37061c1af7bace359c91b723a8d5c1",
+    "path": "C:\\Users\\chenk_lsttb06\\OneDrive\\Documents\\scvu stuff\\rf_detr_testing\\rfdetr_weights\\rf-detr-small.pth",
+    "actual_md5": "fb37061c1af7bace359c91b723a8d5c1",
+    "size_bytes": 386045550,
+    "status": "ok",
+    "md5_match": true
+  },
+  {
+    "filename": "rf-detr-medium.pth",
+    "url": "https://storage.googleapis.com/rfdetr/medium_coco/checkpoint_best_regular.pth",
+    "source": "ModelWeights",
+    "expected_md5": "7223f764a87b863f02eb8d52bf0ce2ee",
+    "path": "C:\\Users\\chenk_lsttb06\\OneDrive\\Documents\\scvu stuff\\rf_detr_testing\\rfdetr_weights\\rf-detr-medium.pth",
+    "actual_md5": "7223f764a87b863f02eb8d52bf0ce2ee",
+    "size_bytes": 404992918,
+    "status": "ok",
+    "md5_match": true
+  },
+  {
+    "filename": "rf-detr-seg-preview.pt",
+    "url": "https://storage.googleapis.com/rfdetr/rf-detr-seg-preview.pt",
+    "source": "ModelWeights",
+    "expected_md5": "e35820c28fb86080558123e47a5e49ca",
+    "path": "C:\\Users\\chenk_lsttb06\\OneDrive\\Documents\\scvu stuff\\rf_detr_testing\\rfdetr_weights\\rf-detr-seg-preview.pt",
+    "actual_md5": "e35820c28fb86080558123e47a5e49ca",
+    "size_bytes": 136827263,
+    "status": "ok",
+    "md5_match": true
+  },
+  {
+    "filename": "rf-detr-seg-nano.pt",
+    "url": "https://storage.googleapis.com/rfdetr/rf-detr-seg-n-ft.pth",
+    "source": "ModelWeights",
+    "expected_md5": "9995497791d0ff1664a1d9ddee9cfd20",
+    "path": "C:\\Users\\chenk_lsttb06\\OneDrive\\Documents\\scvu stuff\\rf_detr_testing\\rfdetr_weights\\rf-detr-seg-nano.pt",
+    "actual_md5": "9995497791d0ff1664a1d9ddee9cfd20",
+    "size_bytes": 134545398,
+    "status": "ok",
+    "md5_match": true
+  },
+  {
+    "filename": "rf-detr-seg-small.pt",
+    "url": "https://storage.googleapis.com/rfdetr/rf-detr-seg-s-ft.pth",
+    "source": "ModelWeights",
+    "expected_md5": "0a2a3006381d0c42853907e700eadd08",
+    "path": "C:\\Users\\chenk_lsttb06\\OneDrive\\Documents\\scvu stuff\\rf_detr_testing\\rfdetr_weights\\rf-detr-seg-small.pt",
+    "actual_md5": "0a2a3006381d0c42853907e700eadd08",
+    "size_bytes": 135042342,
+    "status": "ok",
+    "md5_match": true
+  },
+  {
+    "filename": "rf-detr-seg-medium.pt",
+    "url": "https://storage.googleapis.com/rfdetr/rf-detr-seg-m-ft.pth",
+    "source": "ModelWeights",
+    "expected_md5": "a49af1562c3719227ad43d0ca53b4c7a",
+    "path": "C:\\Users\\chenk_lsttb06\\OneDrive\\Documents\\scvu stuff\\rf_detr_testing\\rfdetr_weights\\rf-detr-seg-medium.pt",
+    "actual_md5": "a49af1562c3719227ad43d0ca53b4c7a",
+    "size_bytes": 143024058,
+    "status": "ok",
+    "md5_match": true
+  },
+  {
+    "filename": "rf-detr-seg-large.pt",
+    "url": "https://storage.googleapis.com/rfdetr/rf-detr-seg-l-ft.pth",
+    "source": "ModelWeights",
+    "expected_md5": "275f7b094909544ed2841c94a677d07e",
+    "path": "C:\\Users\\chenk_lsttb06\\OneDrive\\Documents\\scvu stuff\\rf_detr_testing\\rfdetr_weights\\rf-detr-seg-large.pt",
+    "actual_md5": "275f7b094909544ed2841c94a677d07e",
+    "size_bytes": 145055866,
+    "status": "ok",
+    "md5_match": true
+  },
+  {
+    "filename": "rf-detr-seg-xlarge.pt",
+    "url": "https://storage.googleapis.com/rfdetr/rf-detr-seg-xl-ft.pth",
+    "source": "ModelWeights",
+    "expected_md5": "3693b35d0eea86ebb3e0444f4a611fba",
+    "path": "C:\\Users\\chenk_lsttb06\\OneDrive\\Documents\\scvu stuff\\rf_detr_testing\\rfdetr_weights\\rf-detr-seg-xlarge.pt",
+    "actual_md5": "3693b35d0eea86ebb3e0444f4a611fba",
+    "size_bytes": 152713150,
+    "status": "ok",
+    "md5_match": true
+  },
+  {
+    "filename": "rf-detr-seg-xxlarge.pt",
+    "url": "https://storage.googleapis.com/rfdetr/rf-detr-seg-2xl-ft.pth",
+    "source": "ModelWeights",
+    "expected_md5": "040bc3412af840fa8a47e0ff69b552ba",
+    "path": "C:\\Users\\chenk_lsttb06\\OneDrive\\Documents\\scvu stuff\\rf_detr_testing\\rfdetr_weights\\rf-detr-seg-xxlarge.pt",
+    "actual_md5": "040bc3412af840fa8a47e0ff69b552ba",
+    "size_bytes": 154851262,
+    "status": "ok",
+    "md5_match": true
+  }
+]
