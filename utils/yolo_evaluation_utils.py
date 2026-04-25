@@ -2,20 +2,14 @@
 YOLO segmentation evaluation: IoU, label loading, metrics, and test runner.
 """
 
-import logging
 import os
-import shutil
 from pathlib import Path
 from typing import Dict, List, Tuple
 import pandas as pd
 
 import matplotlib.pyplot as plt
-from shapely.geometry import Polygon
-from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 
-from ultralytics import YOLO
-
-logger = logging.getLogger(__name__)
+# Note: shapely and sklearn are optional dependencies for yolosegmenataion evaluation and confusion matrix plotting. In such cases, they are lazy loaded
 
 
 class YOLOSegmentationEvaluator:
@@ -25,6 +19,8 @@ class YOLOSegmentationEvaluator:
     def polygon_iou(poly1_pts: List, poly2_pts: List) -> float:
         """Calculate IoU between two polygons."""
         try:
+            from shapely.geometry import Polygon
+
             poly1 = Polygon(poly1_pts)
             poly2 = Polygon(poly2_pts)
             if not poly1.is_valid or not poly2.is_valid:
@@ -74,8 +70,9 @@ class YOLOSegmentationEvaluator:
 
         return objs
 
-    @staticmethod
+    @classmethod
     def evaluate_yolo_seg(
+        cls,
         pred_dir: Path,
         gt_dir: Path,
         classes: List,
@@ -117,8 +114,8 @@ class YOLOSegmentationEvaluator:
             gt_path = gt_dir / file
             pred_path = pred_dir / file
 
-            gt_objs = YOLOSegmentationEvaluator.load_yolo_poly_labels(gt_path, is_pred=False)
-            pred_objs = YOLOSegmentationEvaluator.load_yolo_poly_labels(pred_path, is_pred=True)
+            gt_objs = cls.load_yolo_poly_labels(gt_path, is_pred=False)
+            pred_objs = cls.load_yolo_poly_labels(pred_path, is_pred=True)
 
             matched_gt = set()
 
@@ -126,7 +123,7 @@ class YOLOSegmentationEvaluator:
                 best_iou, best_j = 0, -1
 
                 for j, (gt_cls, gt_poly) in enumerate(gt_objs):
-                    iou = YOLOSegmentationEvaluator.polygon_iou(pred_poly, gt_poly)
+                    iou = cls.polygon_iou(pred_poly, gt_poly)
                     if iou > best_iou:
                         best_iou, best_j = iou, j
 
@@ -197,6 +194,7 @@ class YOLOSegmentationEvaluator:
             save_path (Path): Path to save the confusion matrix PNG
             classes (List): List of class names
         """
+        from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
         bg_class = len(classes)
         classes_with_bg = classes + ["Background"]
 
@@ -214,7 +212,7 @@ class YOLOSegmentationEvaluator:
         plt.tight_layout()
         plt.savefig(save_path, dpi=200)
         plt.close()
-    
+
     @staticmethod
     def extract_loss_graphs(folder_path: Path) -> None:
         """
@@ -251,4 +249,76 @@ class YOLOSegmentationEvaluator:
             plt.close()
 
 
-    
+class YOLOBBSEvaluator(YOLOSegmentationEvaluator):
+    """Utility class for evaluating YOLO bbox predictions without shapely."""
+
+    @staticmethod
+    def bbox_iou(
+        box1: Tuple[float, float, float, float],
+        box2: Tuple[float, float, float, float],
+    ) -> float:
+        """Calculate IoU for two YOLO xywh boxes in normalized coordinates."""
+        x1_center, y1_center, w1, h1 = box1
+        x2_center, y2_center, w2, h2 = box2
+
+        x1_min = x1_center - (w1 / 2.0)
+        y1_min = y1_center - (h1 / 2.0)
+        x1_max = x1_center + (w1 / 2.0)
+        y1_max = y1_center + (h1 / 2.0)
+
+        x2_min = x2_center - (w2 / 2.0)
+        y2_min = y2_center - (h2 / 2.0)
+        x2_max = x2_center + (w2 / 2.0)
+        y2_max = y2_center + (h2 / 2.0)
+
+        inter_x_min = max(x1_min, x2_min)
+        inter_y_min = max(y1_min, y2_min)
+        inter_x_max = min(x1_max, x2_max)
+        inter_y_max = min(y1_max, y2_max)
+
+        inter_w = max(0.0, inter_x_max - inter_x_min)
+        inter_h = max(0.0, inter_y_max - inter_y_min)
+        inter_area = inter_w * inter_h
+
+        area1 = max(0.0, x1_max - x1_min) * max(0.0, y1_max - y1_min)
+        area2 = max(0.0, x2_max - x2_min) * max(0.0, y2_max - y2_min)
+        union = area1 + area2 - inter_area
+
+        if union <= 0:
+            return 0.0
+        return inter_area / union
+
+    @staticmethod
+    def load_yolo_poly_labels(path: Path, is_pred: bool = False) -> List:
+        """Load YOLO bbox labels as (class_id, xywh) tuples.
+
+        Expected formats per line:
+        - class x_center y_center width height
+        - class x_center y_center width height confidence
+        """
+        path = Path(path)
+        if not path.exists() or path.stat().st_size == 0:
+            return []
+
+        objects = []
+        with open(path, "r", encoding="utf-8") as file_handle:
+            for line in file_handle:
+                parts = line.strip().split()
+                if len(parts) < 5:
+                    continue
+
+                class_id = int(float(parts[0]))
+                values = list(map(float, parts[1:]))
+                x_center, y_center, width, height = values[:4]
+                objects.append((class_id, (x_center, y_center, width, height)))
+
+        return objects
+
+    @staticmethod
+    def polygon_iou(poly1_pts: Tuple[float, float, float, float], poly2_pts: Tuple[float, float, float, float]) -> float:
+        """Override polygon IoU with bbox IoU for bbox-based evaluation."""
+        return YOLOBBSEvaluator.bbox_iou(poly1_pts, poly2_pts)
+
+
+
+
