@@ -164,8 +164,8 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
         transforms, 
         config.paths["split_dataset"], 
         config.paths["final_dataset"],
-        input_size=512, 
-        output_size=512 #NOTE: Set to 512 for testing. Defaults to 1024
+        input_size=config.slice_resolution,
+        output_size=config.train_resolution #NOTE: Set to train_resolution for testing. Defaults to 1024
     )
     setup_yaml(
         config.paths["yolo_yaml"], 

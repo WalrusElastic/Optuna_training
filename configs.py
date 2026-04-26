@@ -26,6 +26,10 @@ class TrainingConfig:
         # GPU configuration, NOTE: For windows systems, num_gpus is defaulted to 1 regardless of initial configs due to issues with torch distributed.
         self.num_gpus: int = 1
 
+        # Image resolutions
+        self.slice_resolution: int = 256
+        self.train_resolution: int = 640
+
         self.paths: Dict[str, Path] = {
             "root": root,
             "pretrained_model_weights": root / "rf-detr-nano.pth", # Path to model weights
@@ -49,7 +53,7 @@ class TrainingConfig:
             "batch_size": 1,
             "grad_accum_steps": 4,
             "epochs": 3, #NOTE Set to 3 for testing
-            "resolution": 512, #NOTE: Set to 512 for testing
+            "resolution": self.train_resolution, #NOTE: Set to train resolution for testing
             "early_stopping": True,
             "early_stopping_patience": 1, #NOTE: Set to 1 for testing. Defaults to 10
             "early_stopping_min_delta": 0.5, #NOTE Set to 0.5 for testing. Defaults to 0.001

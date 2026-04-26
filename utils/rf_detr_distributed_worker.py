@@ -25,7 +25,7 @@ def main() -> None:
     with open(args.params_json, "r") as f:
         training_params = json.load(f)
 
-    model = RFDETRNano(pretrain_weights=args.pretrain_weights)
+    model = RFDETRNano(pretrain_weights=args.pretrain_weights, resolution=training_params["resolution"])
     model.train(**training_params)
 
 
