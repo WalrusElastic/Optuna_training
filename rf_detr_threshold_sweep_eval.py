@@ -7,6 +7,8 @@ that contains both validation and test metrics.
 """
 
 import logging
+import os
+import os
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -24,6 +26,7 @@ logger = logging.getLogger(__name__)
 # ========================== USER CONFIG ==========================
 # Set these values directly before running the script.
 CONFIG = {
+    "root": Path(os.path.dirname(os.path.realpath(__file__))),
     "weights_path": Path(r"C:\Users\chenk_lsttb06\OneDrive\Documents\scvu stuff\rf_detr_testing\runs\trial_0\checkpoint_best_total.pth"),
     "val_images_dir": Path(r"C:\Users\chenk_lsttb06\OneDrive\Documents\scvu stuff\rf_detr_testing\Final_dataset\valid\images"),
     "val_labels_dir": Path(r"C:\Users\chenk_lsttb06\OneDrive\Documents\scvu stuff\rf_detr_testing\Final_dataset\valid\labels"),
