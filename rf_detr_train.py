@@ -261,7 +261,11 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
     prefixed_validation_results = RFDETRExtractor.prefix_keys(flattened_validation_results, "VAL_")
     prefixed_test_results = RFDETRExtractor.prefix_keys(flattened_test_results, "TEST_")
 
-    score = prefixed_validation_results[f"VAL_{config.classes[2]}_map_50_95"]  # Example: using validation mAP 50-95 of Class_3 as the optimization metric
+    # calculate harmonic mean for optimization score
+    harmonic_mean_values = [prefixed_test_results[f"TEST_{config.classes[2]}_map_50_95"], prefixed_validation_results[f"VAL_{config.classes[2]}_map_50_95"]]
+
+    score = len(harmonic_mean_values) / sum(1.0 / v for v in harmonic_mean_values if v > 0) if all(v > 0 for v in harmonic_mean_values) else 0.0
+
 
     logger.info(f"[Trial {trial.number}] Optimization score calculated: {score:.5f}")
     
@@ -269,6 +273,7 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
     combined_metrics[best_epoch] = best_epoch
     combined_metrics.update(prefixed_validation_results)
     combined_metrics.update(prefixed_test_results)
+    combined_metrics.update({"score": score})
     # ========================== LOGGING ==========================
     logger.info(f"[Trial {trial.number}] Saving results")
     
