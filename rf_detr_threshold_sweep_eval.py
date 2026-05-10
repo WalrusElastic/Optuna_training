@@ -27,13 +27,13 @@ logger = logging.getLogger(__name__)
 # Set these values directly before running the script.
 CONFIG = {
     "root": Path(os.path.dirname(os.path.realpath(__file__))),
-    "weights_path": Path(r"C:\Users\chenk_lsttb06\OneDrive\Documents\scvu stuff\rf_detr_testing\runs\trial_0\checkpoint_best_total.pth"),
-    "val_images_dir": Path(r"C:\Users\chenk_lsttb06\OneDrive\Documents\scvu stuff\rf_detr_testing\Final_dataset\valid\images"),
-    "val_labels_dir": Path(r"C:\Users\chenk_lsttb06\OneDrive\Documents\scvu stuff\rf_detr_testing\Final_dataset\valid\labels"),
-    "test_images_dir": Path(r"C:\Users\chenk_lsttb06\OneDrive\Documents\scvu stuff\rf_detr_testing\Final_dataset/test/images"),
-    "test_labels_dir": Path(r"C:\Users\chenk_lsttb06\OneDrive\Documents\scvu stuff\rf_detr_testing\Final_dataset/test/labels"),
-    "output_csv": Path(r"C:\Users\chenk_lsttb06\OneDrive\Documents\scvu stuff\rf_detr_testing\runs\trial_0\comprehensive_threshold_sweep_results.csv"),
-    "prediction_output_root": Path(r"C:\Users\chenk_lsttb06\OneDrive\Documents\scvu stuff\rf_detr_testing\threshold_eval_outputs"),
+    "weights_path": "INSERT_PATH",
+    "val_images_dir": "INSERT_PATH",
+    "val_labels_dir": "INSERT_PATH",
+    "test_images_dir": "INSERT_PATH",
+    "test_labels_dir": "INSERT_PATH",
+    "output_csv": "INSERT_PATH",
+    "prediction_output_root": "INSERT_PATH",
     # Required: provide class names in index order.
     "classes": ["Class_1", "Class_2", "Class_3", "Class_4"],
     "channels": 1,
