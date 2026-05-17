@@ -17,8 +17,16 @@ class TrainingConfig:
         # Study / logging configuration
         self.study_name: str = "test_study"  # Name of the study
 
+        # Trials configuration
+        self.num_trials: int = 1 # Number of Optuna trials to run. Set to 1 for testing
+
         # Central list of all class names used in training / evaluation
         self.classes: List[str] = ["Class_1", "Class_2", "Class_3", "Class_4"]
+
+        # Image size for upscaling and training NOTE: Set to 512 for testing
+        self.slice_size: int = 512
+        self.training_size: int = 512 
+
 
         # Root dir where this config file (and training scripts) are located
         root: Path = Path(os.path.dirname(os.path.realpath(__file__)))
@@ -26,9 +34,7 @@ class TrainingConfig:
         # GPU configuration, NOTE: For windows systems, num_gpus is defaulted to 1 regardless of initial configs due to issues with torch distributed.
         self.num_gpus: int = 1
 
-        # Image resolutions
-        self.slice_resolution: int = 256
-        self.train_resolution: int = 640
+    
 
         self.paths: Dict[str, Path] = {
             "root": root,
@@ -53,9 +59,9 @@ class TrainingConfig:
             "batch_size": 1,
             "grad_accum_steps": 4,
             "epochs": 3, #NOTE Set to 3 for testing
-            "resolution": self.train_resolution, #NOTE: Set to train resolution for testing
+            "resolution": 512, #NOTE: Set to 512 for testing
             "early_stopping": True,
-            "early_stopping_patience": 1, #NOTE: Set to 1 for testing. Defaults to 10
+            "early_stopping_patience": 1, #NOTE: Set to 1 for testing
             "early_stopping_min_delta": 0.5, #NOTE Set to 0.5 for testing. Defaults to 0.001
 
             # # Learning rates

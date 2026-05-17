@@ -26,12 +26,15 @@ import yaml
 import torch
 import seaborn as sns
 import albumentations as A
+from rfdetr import RFDETRNano
 
 from configs import TrainingConfig
 from utils.rf_detr_extract_utils import RFDETRExtractor
 from utils.preprocessing_utils import PreprocessingUtils
 from utils.data_logging_utils import DataLogger
 from utils.optuna_utils import OptunaTrialManager
+from utils.rf_detr_prediction_utils import RFDETRPredictor
+from utils.yolo_evaluation_utils import YOLOBBSEvaluator
 
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "..")))
 os.environ["ALBUMENTATIONS_DISABLE"] = "1"
@@ -145,7 +148,7 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
     logger.info(f"[Trial {trial.number}] Starting preprocessing phase")
     additional_parameters = config.additional_parameters
 
-    # Extract parameters
+    # Extract additional preprocessing parameters
     brightness = additional_parameters["brightness"]
     contrast = additional_parameters["contrast"]
     sharpness = additional_parameters["sharpness"]
@@ -160,13 +163,15 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
     ])
     
     logger.info(f"[Trial {trial.number}] Starting dataset preparation and augmentation")
+    # prepare final dataset with augmentations
     augment_and_prepare_final_dataset(
         transforms, 
         config.paths["split_dataset"], 
         config.paths["final_dataset"],
-        input_size=config.slice_resolution,
-        output_size=config.train_resolution #NOTE: Set to train_resolution for testing. Defaults to 1024
+        input_size=config.slice_size, 
+        output_size=config.training_size #NOTE: Set to 512 for testing. Defaults to 1024
     )
+    # setup yaml for YOLO training
     setup_yaml(
         config.paths["yolo_yaml"], 
         config.paths["final_dataset"], 
@@ -174,23 +179,33 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
 
     # ========================== TRAINING ==========================
     logger.info(f"[Trial {trial.number}] Starting training phase")
+    
+    # Collecting default parameters
     default_params = config.rfdetr_parameters
-
     training_params = {}
     training_params.update(default_params)
     training_params["output_dir"] = str(trial_path)
 
+    # NOTE: OVERWRITE default parameters with any trial-specific suggestions here if needed, e.g.:
+    # training_params["lr"] = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
+
+    # Combine default and additional parameters for logging
     combined_params = {**default_params, **additional_parameters}
     
     logger.info(f"[Trial {trial.number}] Starting RF-DETR training with {default_params['epochs']} epochs")
+
     trial_path.mkdir(parents=True, exist_ok=True)
 
+    # Save training parameters to JSON for the worker script to consume
     params_json_path = config.paths["params_json"]
     if params_json_path.exists():
         logger.info(f"Removing existing params JSON file at {params_json_path}")
         params_json_path.unlink()
     with open(params_json_path, "w") as f:
         json.dump(training_params, f, indent=2)
+
+    # Launch training subprocess (handles distributed setup internally based on OS)
+    logger.info(f"[Trial {trial.number}] Launching training subprocess with {config.num_gpus} GPU(s)")
 
     training_start_time = time.time()
     if sys.platform == "win32":
@@ -241,52 +256,89 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
     logger.info(f"[Trial {trial.number}] Training completed successfully")
     training_end_time = time.time()
     training_time = training_end_time - training_start_time
-    # ========================== EXTRACTING METRICS ==========================
-    rf_detr_log_path = trial_path / "log.txt"  # Assuming RF-DETR saves a training log with metrics
-    best_epoch = RFDETRExtractor.get_best_epoch(rf_detr_log_path)
-    last_epoch = RFDETRExtractor.get_final_epoch(rf_detr_log_path)
+    # ========================== EXTRACTING METRICS FROM RF-DETR OUTPUT ==========================
+    rf_detr_val_metrics_path = trial_path/ "metrics.csv"
+    best_epoch = RFDETRExtractor.get_best_epoch(
+        rf_detr_val_metrics_path, 
+        patience=training_params["early_stopping_patience"]
+        )
     logger.info(f"[Trial {trial.number}] Best epoch identified: {best_epoch}")
-    logger.info(f"[Trial {trial.number}] Final epoch identified: {last_epoch}")
-    logger.info(f"[Trial {trial.number}] {last_epoch} epochs completed in {training_time:.2f} seconds, average time per epoch: {training_time/last_epoch:.2f} seconds")
+    logger.info(f"[Trial {trial.number}] Final epoch identified: {best_epoch + training_params['early_stopping_patience']}")
+    logger.info(f"[Trial {trial.number}] {best_epoch + training_params['early_stopping_patience']} epochs completed in {training_time:.2f} seconds, average time per epoch: {training_time/(best_epoch + training_params['early_stopping_patience']):.2f} seconds")
 
 
 
-    logger.info(f"[Trial {trial.number}] Extracting validation and test results from RF-DETR output")  
+    logger.info(f"[Trial {trial.number}] Extracting validation RF-DETR output")  
+
+    validation_results = RFDETRExtractor.get_validation_results(
+        rf_detr_val_metrics_path, 
+        best_epoch
+        )
+ 
+    # ========================== TESTING MODEL ==========================
+    test_predictions_dir = trial_path / "test_predictions" 
+    test_predictions_dir.mkdir(parents=True, exist_ok=True)
+    model_path = trial_path / "checkpoint_best_total.pth"
+    print(model_path)
+    model = RFDETRNano(pretrain_weights = str(model_path))
+    RFDETRPredictor.predict_image_dir_and_save_bbs_labels(
+        model=model,
+        classes=config.classes,
+        input_dir=config.paths["final_dataset"] / "test" / "images",
+        pred_labels_dir=test_predictions_dir,
+        threshold=0.03, # Set a low threshold to capture more predictions for evaluation of 50-95,
+        include_confidence=True
+        )
     
+    test_results, _, _ = YOLOBBSEvaluator.evaluate(
+        pred_dir=test_predictions_dir,
+        gt_dir=config.paths["final_dataset"] / "test" / "labels",
+        classes=config.classes
+    )
 
-    rf_detr_restults_path = trial_path/ "results.json"  # Assuming RF-DETR saves a results.json with validation/test metrics
-    validation_results, test_results = RFDETRExtractor.get_validation_and_test_results(rf_detr_restults_path)
-    flattened_validation_results = RFDETRExtractor.flatten_dict(validation_results)
-    flattened_test_results = RFDETRExtractor.flatten_dict(test_results)
-    prefixed_validation_results = RFDETRExtractor.prefix_keys(flattened_validation_results, "VAL_")
-    prefixed_test_results = RFDETRExtractor.prefix_keys(flattened_test_results, "TEST_")
-
-    # calculate harmonic mean for optimization score
-    harmonic_mean_values = [prefixed_test_results[f"TEST_{config.classes[2]}_map_50_95"], prefixed_validation_results[f"VAL_{config.classes[2]}_map_50_95"]]
-
-    score = len(harmonic_mean_values) / sum(1.0 / v for v in harmonic_mean_values if v > 0) if all(v > 0 for v in harmonic_mean_values) else 0.0
-
+    
+    # ========================== Calculating Optimization Score & Logging output ==========================
+    score = 1/ (1/validation_results[f"val/AP/{config.classes[2]}"] + 1/test_results[f"{config.classes[2]}_map_50_95"])
 
     logger.info(f"[Trial {trial.number}] Optimization score calculated: {score:.5f}")
     
     combined_metrics = {}
-    combined_metrics[best_epoch] = best_epoch
-    combined_metrics.update(prefixed_validation_results)
-    combined_metrics.update(prefixed_test_results)
-    combined_metrics.update({"score": score})
-    # ========================== LOGGING ==========================
+    combined_metrics["best_epoch"] = best_epoch
+    combined_metrics.update(validation_results)
+    combined_metrics.update(test_results)
+    combined_metrics['score'] = score
+
+    # converting to float 32 and int 32 for values in combined metrics and combined params
+    corrected_combined_metrics = {}
+    for key in combined_metrics:
+        if isinstance(combined_metrics[key], np.float64):
+            corrected_combined_metrics[key] =float(combined_metrics[key])
+        elif isinstance(combined_metrics[key], np.int64):
+            corrected_combined_metrics[key] = int(combined_metrics[key])
+        else:
+            corrected_combined_metrics[key] = combined_metrics[key]
+
+    corrected_combined_params = {}
+    for key in combined_params:
+        if isinstance(combined_params[key], np.float64):
+            corrected_combined_params[key] = np.float32(combined_params[key])
+        elif isinstance(combined_params[key], np.int64):
+            corrected_combined_params[key] = np.int32(combined_params[key])
+        else:
+            corrected_combined_params[key] = combined_params[key]
+
     logger.info(f"[Trial {trial.number}] Saving results")
     
     DataLogger.save_to_json(
         output_json_path=config.paths["output_json"],
         trial_number=trial.number,
-        params=combined_params,
-        metrics=combined_metrics
+        params=corrected_combined_params,
+        metrics=corrected_combined_metrics
     )
     
     DataLogger.save_to_csv(
         file_path=config.paths["output_csv"],
-        data_dict={**combined_params, **combined_metrics}
+        data_dict={**corrected_combined_params, **corrected_combined_metrics}
     )
     
     OptunaTrialManager.save_trial_to_json(trial, config.paths["optuna_json"], score)
@@ -308,10 +360,10 @@ def main():
     try:
         logger.info("Creating or loading Optuna study")
         study = OptunaTrialManager.create_study_from_json(config.paths["optuna_json"], config.study_name)
-        logger.info(f"Starting optimization loop (1 trial)")
+        logger.info(f"Starting optimization loop ({config.num_trials} trials)")
         study.optimize(
             lambda trial: objective(trial, config),
-            n_trials=1,
+            n_trials=config.num_trials,
             n_jobs=1
         )
         logger.info("Optimization completed successfully")

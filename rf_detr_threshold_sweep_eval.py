@@ -5,6 +5,7 @@ This script runs prediction for each threshold in [0.05, 0.50] (step 0.05), comp
 overall + per-class precision/recall metrics, and appends one row per threshold
 that contains both validation and test metrics.
 """
+# NOTE THIS SCRIPT DOES NOT WORK. IT NEEDS TO BE UPDATED. FAHHH
 
 import logging
 import os

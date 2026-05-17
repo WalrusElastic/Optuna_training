@@ -4,6 +4,10 @@ RF-DETR extraction utilities: best epoch and results handling (OOP format).
 
 import json
 from pathlib import Path
+from typing import Optional
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
 
 class RFDETRExtractor:
     """
@@ -11,137 +15,129 @@ class RFDETRExtractor:
     """
 
     @staticmethod
-    def get_best_epoch(log_file_path):
+    def get_best_epoch(metrics_csv_path: str | Path, patience: int) ->int:
         """
-        Read the log file and return the last 'all_best_ep' value.
-        
-        Args:
-            log_file_path (str or Path): Path to the log.txt file.
-        
-        Returns:
-            int: The best epoch from the last entry.
+        Determine the best epoch based on the last epoch minus a patience value.
         """
-        log_file = Path(log_file_path)
-        best_epoch = None
-        
-        with open(log_file, 'r') as f:
-            for line in f:
-                if line.strip():
-                    try:
-                        data = json.loads(line.strip())
-                        if 'all_best_ep' in data:
-                            best_epoch = data['all_best_ep']
-                    except json.JSONDecodeError:
-                        continue  # Skip invalid JSON lines
-        
+        csv_path = Path(metrics_csv_path)
+
+        df = pd.read_csv(csv_path)
+
+        df = df.groupby("epoch").mean(numeric_only=True).reset_index().sort_values("epoch")
+
+
+
+        # find last epoch
+        last_epoch = df["epoch"].max() 
+        best_epoch = last_epoch - patience
         return best_epoch
     
+
+
     @staticmethod
-    def get_final_epoch(log_file_path):
+    def get_validation_results(results_file_path: str | Path, best_epoch: int) -> dict:
         """
-        Read the log file and return the last 'epoch' value.
-        
+        Extract validation results for the best epoch from the metrics CSV file.
+
+        """
+        results_path = Path(results_file_path)
+
+
+
+        df = pd.read_csv(results_path).groupby("epoch").mean(numeric_only=True).reset_index()
+
+        matches = df[df["epoch"] == best_epoch]
+        row = matches.iloc[0] if len(matches) > 0 else (df.iloc[-1] if len(df) > 0 else None)
+
+
+        validation = {col.replace("val/", "val/"): float(row[col]) for col in df.columns if col.startswith("val/")}
+        return validation
+
+    @staticmethod
+    def plot_metrics(
+        metrics_csv: str,
+        output_path: Optional[str] = None,
+        loss_log_scale: bool = False,
+    ) -> str:
+        """Read a PTL ``CSVLogger`` metrics file and save a seaborn training plot.
+
+        The figure contains one subplot per metric group (Loss, AP@0.50,
+        AP@0.50:0.95, AR), arranged in a 2-column grid.  Only groups with at
+        least one non-NaN column are shown.
+
         Args:
-            log_file_path (str or Path): Path to the log.txt file.
+            metrics_csv: Path to the ``metrics.csv`` file produced by
+                ``CSVLogger``.
+            output_path: Destination for the PNG file.  Defaults to
+                ``metrics_plot.png`` next to ``metrics_csv``.
+
         Returns:
-            int: The final epoch from the last entry.
-        """
-        log_file = Path(log_file_path)
-        final_epoch = None
-        
-        with open(log_file, 'r') as f:
-            for line in f:
-                if line.strip():
-                    try:
-                        data = json.loads(line.strip())
-                        if 'epoch' in data:
-                            final_epoch = data['epoch']
-                    except json.JSONDecodeError:
-                        continue  # Skip invalid JSON lines
-        
-        return final_epoch
-    
-    @staticmethod
-    def combine_dictionaries(results_list):
-        """
-        Flatten a list of result dictionaries into a single flat dictionary.
-        
-        Args:
-            results_list (list): List of dicts, each with 'class' and metrics.
-        
-        Returns:
-            dict: Flattened dict with keys like 'class_1_map_50_95'.
-        """
-        flat_dict = {}
-        for item in results_list:
-            class_name = item["class"].replace(" ", "_")
-            for key, value in item.items():
-                if key != "class":
-                    # Replace special chars in key
-                    clean_key = key.replace("@", "_").replace(":", "_").replace(".", "_")
-                    flat_key = f"{class_name}_{clean_key}"
-                    flat_dict[flat_key] = value
-        return flat_dict
+            The absolute path where the figure was saved.
 
-    @staticmethod
-    def get_validation_and_test_results(results_file_path):
+        Raises:
+            ImportError: If ``matplotlib``, ``pandas``, or ``seaborn`` are not
+                installed.
+            FileNotFoundError: If ``metrics_csv`` does not exist.
         """
-        Read the results.json file and return validation and test results as lists of dicts.
-        
-        Args:
-            results_file_path (str or Path): Path to the results.json file.
-        
-        Returns:
-            tuple: (validation_results, test_results) where each is a dictionary.
-        """
-        results_file = Path(results_file_path)
-        
-        with open(results_file, 'r') as f:
-            data = json.load(f)
-        
-        class_map = data.get("class_map", {})
-        validation_results = class_map.get("valid", [])
-        test_results = class_map.get("test", [])
-        
-        return RFDETRExtractor.combine_dictionaries(validation_results), RFDETRExtractor.combine_dictionaries(test_results)   
 
+        csv_path = Path(metrics_csv)
+        if not csv_path.exists():
+            raise FileNotFoundError(f"metrics.csv not found: {csv_path}")
 
-    @staticmethod
-    def flatten_dict(d, prefix='', sep='_'):
-        """
-        Recursively flatten a nested dictionary.
-        
-        Args:
-            d (dict): The dictionary to flatten.
-            prefix (str): Prefix for keys.
-            sep (str): Separator for nested keys.
-        
-        Returns:
-            dict: Flattened dictionary.
-        """
-        items = []
-        for k, v in d.items():
-            new_key = f"{prefix}{sep}{k}" if prefix else k
-            if isinstance(v, dict):
-                items.extend(RFDETRExtractor.flatten_dict(v, new_key, sep=sep).items())
-            elif isinstance(v, list):
-                for i, item in enumerate(v):
-                    if isinstance(item, dict):
-                        items.extend(RFDETRExtractor.flatten_dict(item, f"{new_key}{sep}{i}", sep=sep).items())
-                    else:
-                        items.append((f"{new_key}{sep}{i}", item))
-            else:
-                items.append((new_key, v))
-        return dict(items)
+        if output_path is None:
+            output_path = str(csv_path.parent / "metrics_plot.png")
 
-    @staticmethod
-    def prefix_keys(d: dict, prefix: str) -> dict:
-        """
-        Return a copy of a dictionary with `prefix` prepended to each key.
+        df = pd.read_csv(csv_path)
+        if "epoch" not in df.columns:
+            raise ValueError("metrics.csv does not contain an 'epoch' column.")
+        # CSVLogger writes one row per step; aggregate to one row per epoch.
+        df = df.groupby("epoch").mean(numeric_only=True).reset_index()
 
-        Only top-level keys are modified. If ``prefix`` is empty the
-        original dictionary is returned as a shallow copy.
-        """
-        if not prefix:
-            return d.copy()
-        return {f"{prefix}{k}": v for k, v in d.items()}
+        def _val_cols(*patterns: str) -> list[str]:
+            """Return val/ columns whose name contains any of the given patterns."""
+            return [c for c in df.columns if c.startswith("val/") and any(p in c for p in patterns) and df[c].notna().any()]
+
+        # Loss: only the aggregate scalars, not per-component breakdowns.
+        loss_cols = [c for c in ("train/loss", "val/loss", "test/loss") if c in df.columns and df[c].notna().any()]
+
+        # AP/AR: all val/ columns matching each group (base + EMA when present).
+        # test/ metrics are excluded — they only appear at the final epoch as a
+        # single dot which seaborn renders as a legend entry with no visible line.
+        metric_groups: dict[str, list[str]] = {
+            "Loss": loss_cols,
+            "AP@0.50": _val_cols("mAP_50"),  # matches mAP_50 and ema_mAP_50 but not mAP_50_95
+            "AP@0.50:0.95": _val_cols("mAP_50_95"),
+            "AR": _val_cols("mAR"),
+        }
+        # Exclude mAP_50_95 hits from the AP@0.50 bucket (substring overlap).
+        metric_groups["AP@0.50"] = [c for c in metric_groups["AP@0.50"] if "mAP_50_95" not in c]
+        metric_groups = {k: v for k, v in metric_groups.items() if v}
+
+        n_groups = len(metric_groups)
+        n_cols = 2
+        n_rows = (n_groups + n_cols - 1) // n_cols
+
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(12, 5 * n_rows), squeeze=False)
+        axes_flat = axes.flatten()
+
+        melted = df.melt(id_vars="epoch", var_name="metric", value_name="value")
+
+        for idx, (title, metric_list) in enumerate(metric_groups.items()):
+            ax = axes_flat[idx]
+            group_data = melted[melted["metric"].isin(metric_list)]
+            sns.lineplot(data=group_data, x="epoch", y="value", hue="metric", marker="o", ax=ax)
+            ax.set_title(title, fontsize=13, fontweight="bold")
+            ax.set_xlabel("Epoch", fontsize=11)
+            ax.set_ylabel(title, fontsize=11)
+            ax.grid(True, alpha=0.3)
+            if title == "Loss" and loss_log_scale:
+                ax.set_yscale("log")
+
+        for idx in range(n_groups, len(axes_flat)):
+            axes_flat[idx].set_visible(False)
+
+        fig.suptitle("RF-DETR Training Metrics", fontsize=14)
+        fig.tight_layout()
+        fig.savefig(output_path, dpi=150)
+        plt.close(fig)
+        return str(Path(output_path).resolve())

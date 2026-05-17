@@ -3,6 +3,7 @@ from pathlib import Path
 
 import shutil
 import io
+from typing import List
 import requests
 import supervision as sv
 from PIL import Image
@@ -55,11 +56,12 @@ class RFDETRPredictor:
     @staticmethod
     def predict_image_dir_and_save_seg_labels(
         model,
-        classes,
-        input_dir,
-        pred_labels_dir,
-        threshold=0.5,
-        channels=1,
+        classes: List[str],
+        input_dir: str | Path,
+        pred_labels_dir: str | Path,
+        threshold: float = 0.5,
+        channels: int = 1,
+        include_confidence=False,
     ):
         """Run RF-DETR prediction and write polygon labels for one threshold.
 
@@ -79,10 +81,10 @@ class RFDETRPredictor:
             label_path = pred_labels_dir / f"{image_path.stem}.txt"
 
             with open(label_path, "w", encoding="utf-8") as file_handle:
-                for bbox, class_id in zip(detections.xyxy, detections.class_id):
+                for det_index, (bbox, class_id) in enumerate(zip(detections.xyxy, detections.class_id)):
                     class_idx = int(class_id)
                     if class_idx < 0 or class_idx >= len(classes):
-                        continue
+                        raise ValueError(f"Invalid class index {class_idx} for image {image_path.name}")
 
                     line = RFDETRPredictor._bbox_to_polygon_line(
                         class_idx=class_idx,
@@ -90,17 +92,20 @@ class RFDETRPredictor:
                         img_width=img_width,
                         img_height=img_height,
                     )
+                    if include_confidence:
+                        confidence = float(detections.confidence[det_index])
+                        line = line.strip() + f" {confidence:.6f}\n"
                     if line is not None:
                         file_handle.write(line)
 
     @staticmethod
     def predict_image_dir_and_save_bbs_labels(
         model,
-        classes,
-        input_dir,
-        pred_labels_dir,
-        threshold=0.5,
-        channels=1,
+        classes: List[str],
+        input_dir: str | Path,
+        pred_labels_dir: str | Path,
+        threshold: float = 0.5,
+        channels: int = 1,
         include_confidence=False,
     ):
         """Run RF-DETR prediction and write YOLO bbox labels for one threshold.
@@ -125,7 +130,8 @@ class RFDETRPredictor:
                 for det_index, (bbox, class_id) in enumerate(zip(detections.xyxy, detections.class_id)):
                     class_idx = int(class_id)
                     if class_idx < 0 or class_idx >= len(classes):
-                        continue
+                        # raise ValueError(f"Invalid class index {class_idx} for image {image_path.name}")
+                        print(f"Warning: Skipping invalid class index {class_idx} for image {image_path.name}")
 
                     normalized_bbox = RFDETRPredictor._normalize_and_validate_bbox(
                         bbox=bbox,
@@ -152,7 +158,13 @@ class RFDETRPredictor:
                         )
 
     @staticmethod
-    def predict_images_and_save_annotated_images(classes, model, input_dir, output_dir, threshold=0.5, channels=1):
+    def predict_images_and_save_annotated_images(
+        model, 
+        classes: List[str], 
+        input_dir: str | Path, 
+        output_dir: str | Path, 
+        threshold: float = 0.5, 
+        channels: int = 1):
         """
         Predict objects in images using RF-DETR model and save annotated images. Takes in the model, input directory of images, and output directory for annotated results. Saves both annotated images and YOLO-format labels in seperate subdirectories.
 
