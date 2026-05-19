@@ -25,7 +25,7 @@ class TrainingConfig:
 
         # Image size for upscaling and training NOTE: Set to 512 for testing
         self.slice_size: int = 512
-        self.training_size: int = 512 
+        self.training_size: int = self.training_size 
 
 
         # Root dir where this config file (and training scripts) are located
