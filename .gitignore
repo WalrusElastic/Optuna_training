@@ -9,3 +9,4 @@ test_study_output.csv
 test_study_output.json
 venv
 lin_wheels/
+__pycache__/
