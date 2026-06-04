@@ -26,7 +26,7 @@ class TrainingConfig:
 
         # Image size for upscaling and training NOTE: Set to 512 for testing
         self.slice_size: int = 512
-        self.training_size: int = self.training_size 
+        self.training_size: int = self.slice_size
 
 
         # Root dir where this config file (and training scripts) are located
@@ -60,7 +60,7 @@ class TrainingConfig:
             "batch_size": 1,
             "grad_accum_steps": 4,
             "epochs": 3, #NOTE Set to 3 for testing
-            "resolution": 512, #NOTE: Set to 512 for testing
+            "resolution": self.training_size, 
             "early_stopping": True,
             "early_stopping_patience": 1, #NOTE: Set to 1 for testing
             "early_stopping_min_delta": 0.5, #NOTE Set to 0.5 for testing. Defaults to 0.001
