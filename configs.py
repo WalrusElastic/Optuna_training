@@ -2,6 +2,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Dict, List
+from rfdetr.datasets.aug_config import AUG_CONSERVATIVE, AUG_AGGRESSIVE, AUG_AERIAL, AUG_INDUSTRIAL
 
 
 
@@ -72,6 +73,12 @@ class TrainingConfig:
             "clip_max_norm": 0.1,
             "lr_vit_layer_decay": 0.8,
             "lr_component_decay": 1.0,
+
+            # Augmentation parameters
+            "aug_config": AUG_AGGRESSIVE,
+
+            # Use EMA
+            "use_ema": False,
 
             # # Drop parameters
             "dropout": 0,
