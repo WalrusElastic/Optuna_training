@@ -190,7 +190,7 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
     # training_params["lr"] = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
 
     # Combine default and additional parameters for logging
-    combined_params = {**default_params, **additional_parameters}
+    combined_params = {**training_params, **additional_parameters}
     
     logger.info(f"[Trial {trial.number}] Starting RF-DETR training with {default_params['epochs']} epochs")
 
