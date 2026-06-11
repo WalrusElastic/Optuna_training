@@ -106,4 +106,3 @@ class TrainingConfig:
             "contrast": 0.18471,
             "sharpness": 0.15792,
         }
-
