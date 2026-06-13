@@ -28,7 +28,7 @@ import seaborn as sns
 import albumentations as A
 from rfdetr import RFDETRNano
 
-from configs import TrainingConfig
+from Optuna2.Optuna_training.configs2 import TrainingConfig
 from utils.rf_detr_extract_utils import RFDETRExtractor
 from utils.preprocessing_utils import PreprocessingUtils
 from utils.data_logging_utils import DataLogger

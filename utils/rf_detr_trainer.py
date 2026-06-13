@@ -3,6 +3,7 @@ RF-DETR model training and evaluation wrapper.
 
 Single Responsibility: Train RF-DETR model and extract metrics.
 """
+#NOTE edit the loggers at "if proc.stdout"
 
 import logging
 import json
@@ -62,7 +63,7 @@ class RFDETRTrainer:
         
         trial_path.mkdir(parents=True, exist_ok=True)
         training_params["output_dir"] = str(trial_path)
-
+        training_params["dataset_dir"] = str(training_params["dataset_dir"])
         # ========================== TRAINING ==========================
         
         # Save parameters for worker script
@@ -216,6 +217,14 @@ class RFDETRTrainer:
         logger.info(f"[Trial {trial_number}] Launching: {' '.join(launch_cmd)}")
         proc = subprocess.run(launch_cmd, cwd=str(root_dir))
 
+        #capture_output=True, text=True
+        # logger.info(f"[Trial {trial_number}] Return code: {proc.returncode}")
+
+        # if proc.stdout:
+        #     logger.info(f"[Trial {trial_number}] STDOUT:\n{proc.stdout}")
+
+        # if proc.stderr:
+        #     logger.error(f"[Trial {trial_number}] STDERR:\n{proc.stderr}")        
         if proc.returncode != 0:
             raise RuntimeError(
                 f"Training subprocess failed with return code {proc.returncode}. "

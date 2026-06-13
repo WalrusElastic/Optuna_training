@@ -5,7 +5,8 @@ Extract YOLO training/eval results to CSV and JSON, and loss graph PNGs.
 import csv
 import json
 import logging
-from pathlib import Path
+from pathlib import Path, WindowsPath
+import numpy as np
 from typing import Dict, List, Optional
 
 import matplotlib.pyplot as plt
@@ -101,3 +102,47 @@ class DataLogger:
 
         with open(output_json_path, "w") as f:
             json.dump(all_results, f, indent=2)
+        
+    @staticmethod
+    def make_json_safe(obj: Dict) -> Dict:
+        """
+        Convert non-JSON-serializable types in a dictionary to JSON-safe formats.
+
+        Specifically handles:
+        - Path objects converted to strings
+        - NumPy numeric types converted to native Python types
+
+        Parameters
+        ----------
+        data : obj
+            The input dictionary containing potentially non-JSON-serializable values.
+
+        Returns
+        -------
+        Dict
+            A new dictionary with all values converted to JSON-safe formats.
+        """
+        # Path → string
+        if isinstance(obj, (Path, WindowsPath)):
+            return str(obj)
+
+        # numpy scalars
+        if isinstance(obj, (np.float32, np.float64)):
+            return float(obj)
+
+        if isinstance(obj, (np.int32, np.int64)):
+            return int(obj)
+
+        # tuple → list (IMPORTANT FIX)
+        if isinstance(obj, tuple):
+            return [DataLogger.make_json_safe(x) for x in obj]
+
+        # dict → recurse
+        if isinstance(obj, dict):
+            return {k: DataLogger.make_json_safe(v) for k, v in obj.items()}
+
+        # list → recurse
+        if isinstance(obj, list):
+            return [DataLogger.make_json_safe(v) for v in obj]
+
+        return obj

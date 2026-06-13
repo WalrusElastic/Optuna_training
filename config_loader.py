@@ -4,8 +4,11 @@ RF-DETR only - no YOLO dependencies.
 """
 
 import logging
+import os
+from os import path
 from pathlib import Path
 from typing import Dict, List, Optional, Any
+from rfdetr.datasets.aug_config import AUG_CONSERVATIVE, AUG_AGGRESSIVE, AUG_AERIAL, AUG_INDUSTRIAL
 import yaml
 
 logger = logging.getLogger(__name__)
@@ -43,9 +46,10 @@ class ConfigLoader:
         if not raw_config:
             raise ValueError("Config file is empty")
 
-        config = TrainingConfig(raw_config, config_path.parent)
+        root: Path = Path(os.path.dirname(os.path.realpath(__file__)))
+        config = TrainingConfig(raw_config, root) #config_path.parent
         config._validate()
-        logger.info(f"Config loaded from {config_path}")
+        logger.info(f"Config loaded from {root}")
         return config
 
 
@@ -81,7 +85,7 @@ class TrainingConfig:
             "pretrained_model_weights": self.root / path_config.get("pretrained_model_weights", "model.pth"),
             "split_dataset": self.root / path_config.get("split_dataset", "split_dataset"),
             "final_dataset": self.root / path_config.get("final_dataset", "Final_dataset"),
-            "data_yaml": self.root / path_config.get("data_yaml", "data.yaml"),
+            "data_yaml": self.root / path_config.get("final_dataset", "Final_dataset") / path_config.get("data_yaml", "data.yaml"),
             "runs_dir": self.root / path_config.get("runs_dir", "runs"),
             "optuna_json": self.root / (path_config.get("optuna_json") or f"{self.study_name}_optuna_storage.json"),
             "output_csv": self.root / (path_config.get("output_csv") or f"{self.study_name}_output.csv"),
@@ -111,17 +115,32 @@ class TrainingConfig:
             "n_jobs": optuna_config.get("n_jobs", 1),
         }
         # Optuna search space for hyperparameter optimization
-        self.optuna_search_space: Dict[str, Any] = optuna_config.get("search_space", {})
-        self.optuna_search_space: Dict[str, Dict[str, Any]] = optuna_config.copy().get("search_space", {})
+        self.optuna_search_space = optuna_config.get("search_space") or {}
 
         # RF-DETR training parameters - keep generic so new keys can be added in YAML
         rfdetr_config = raw_config.get("rfdetr_training", {})
         self.rfdetr_parameters: Dict[str, Any] = rfdetr_config.copy()
         # sensible defaults for commonly used keys
+        ds = self.rfdetr_parameters.get("dataset_dir")
+        if not ds or ds == "None":
+            self.rfdetr_parameters["dataset_dir"] = self.paths["final_dataset"]  # Will be set to final_dataset if None
         self.rfdetr_parameters.setdefault("epochs", 100)
         self.rfdetr_parameters.setdefault("batch_size", 4)
         self.rfdetr_parameters.setdefault("lr", 1e-4)
         self.rfdetr_parameters.setdefault("early_stopping_patience", 10)
+
+        Default_Augs = {
+            "AUG_CONSERVATIVE": AUG_CONSERVATIVE,
+            "AUG_AGGRESSIVE": AUG_AGGRESSIVE,
+            "AUG_AERIAL": AUG_AERIAL,
+            "AUG_INDUSTRIAL": AUG_INDUSTRIAL,
+        }
+
+        aug = self.rfdetr_parameters.get("aug_config")
+
+        if aug in Default_Augs:
+            self.rfdetr_parameters["aug_config"] = Default_Augs[aug]
+
 
         # RF-DETR dataset parameters - keep generic
         rfdetr_dataset_config = raw_config.get("rfdetr_dataset", {})

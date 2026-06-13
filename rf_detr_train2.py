@@ -15,12 +15,12 @@ Uses modular architecture:
 - training_utils.optuna_utils: Optuna persistence
 - training_utils.rf_detr_trainer.py: Model training
 """
-
+#NOTE logger disabled in  rf_detr_distributed_worker (model.train)
 import logging
 import os
 import sys
 import shutil
-from pathlib import Path
+from pathlib import Path, WindowsPath
 from typing import Any
 
 import optuna
@@ -53,7 +53,12 @@ logger.info(f"CUDA Available: {torch.cuda.is_available()}")
 # ========================== YAML SETUP ==========================
 
 def setup_data_yaml(yaml_path: Path, dataset_path: Path, classes: list) -> None:
-    """Create data.yaml for RF-DETR dataset."""
+    """Create data.yaml for RF-DETR dataset.
+    Args:
+        yaml_path: Path to save data.yaml (in Final_dataset folder)
+        dataset_path: Path to dataset (root containing train/valid/test)
+        classes: List of class names
+    """
     logger.info(f"Setting up data.yaml at {yaml_path}")
     data_yaml = {
         "path": str(dataset_path),
@@ -126,10 +131,12 @@ def prepare_augmented_dataset(
         labels_dir.mkdir(parents=True, exist_ok=True)
 
         tif_files = list(src_dir.glob("*.tif"))
+    
         logger.info(f"[Trial {trial_number}] Found {len(tif_files)} images in {split}")
         
         for tif_path in tif_files:
             txt_path = tif_path.with_suffix('.txt')
+            
             PreprocessingUtils.generate_transform(
                 str(tif_path),
                 str(txt_path),
@@ -191,22 +198,24 @@ def objective(trial: optuna.trial.Trial, config: Any) -> float:
         all_params.update(config.preprocessing_config)
         # Apply Optuna search-space suggestions (overrides training_params)
         search_space = getattr(config, "optuna_search_space", {})
+        logger.info(f"[Trial {trial.number}] Search space: {search_space}")
         for name, spec in search_space.items():
+        
             param_type = spec.get("type", "float")
             if param_type == "float":
                 val = trial.suggest_float(
                     name,
-                    spec["low"],
-                    spec["high"],
+                    float(spec["low"]),
+                    float(spec["high"]),
                     log=bool(spec.get("log", False))
                 )
             elif param_type == "int":
                 if "step" in spec:
                     val = trial.suggest_int(
                         name,
-                        spec["low"],
-                        spec["high"],
-                        step=spec["step"]
+                        int(spec["low"]),
+                        int(spec["high"]),
+                        step=int(spec["step"])
                     )
                 else:
                     val = trial.suggest_int(name, spec["low"], spec["high"])
@@ -214,9 +223,9 @@ def objective(trial: optuna.trial.Trial, config: Any) -> float:
                 val = trial.suggest_categorical(name, spec["choices"])
             else:
                 continue
-            try:
-                training_params[name] = val
-            except KeyError:
+            
+            training_params[name] = val
+
 
             logger.info(f"[Trial {trial.number}] Optuna suggestion: {name} = {val}")
 
@@ -242,24 +251,28 @@ def objective(trial: optuna.trial.Trial, config: Any) -> float:
         all_metrics.update(result["test_results"])
 
         # Convert numpy types for JSON serialization
-        corrected_metrics = {}
-        for key, val in all_metrics.items():
-            if isinstance(val, (np.float64, np.float32)):
-                corrected_metrics[key] = float(val)
-            elif isinstance(val, (np.int64, np.int32)):
-                corrected_metrics[key] = int(val)
-            else:
-                corrected_metrics[key] = val
+        # corrected_metrics = {}
+        # for key, val in all_metrics.items():
+        #     if isinstance(val, (np.float64, np.float32)):
+        #         corrected_metrics[key] = float(val)
+        #     elif isinstance(val, (np.int64, np.int32)):
+        #         corrected_metrics[key] = int(val)
+        #     else:
+        #         corrected_metrics[key] = val
 
-        corrected_params = {}
-        for key, val in all_params.items():
-            if isinstance(val, (np.float64, np.float32)):
-                corrected_params[key] = float(val)
-            elif isinstance(val, (np.int64, np.int32)):
-                corrected_params[key] = int(val)
-            else:
-                corrected_params[key] = val
-
+        # corrected_params = {}
+        # for key, val in all_params.items():
+        #     if isinstance(val, (WindowsPath, Path)):
+        #         corrected_params[key] = str(val)
+        #     if isinstance(val, (np.float64, np.float32)):
+        #         corrected_params[key] = float(val)
+        #     elif isinstance(val, (np.int64, np.int32)):
+        #         corrected_params[key] = int(val)
+        #     else:
+        #         corrected_params[key] = val
+        corrected_metrics = DataLogger.make_json_safe(all_metrics)
+        corrected_params = DataLogger.make_json_safe(all_params)
+        print(corrected_params)
         # ========================== LOGGING ==========================
         logger.info(f"[Trial {trial.number}] Saving results")
         
@@ -313,7 +326,8 @@ def main():
     logger.info(f"Study: {config.study_name}")
     logger.info(f"Classes: {config.classes}")
     logger.info(f"Optimization target class: {config.optimization_target_class}")
-
+    logger.info(f"final_dataset path: {config.paths['final_dataset']}")
+    
     # Create or load Optuna study
     logger.info("Setting up Optuna study")
     study = OptunaTrialManager.create_study_from_json(
@@ -322,6 +336,7 @@ def main():
     )
 
     # Run optimization
+    logger.info(f"dataset_dir path: {config.rfdetr_parameters['dataset_dir']}")
     logger.info(f"Starting optimization ({config.optuna_parameters['n_trials']} trials)")
     try:
         study.optimize(
