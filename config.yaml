@@ -16,7 +16,6 @@ paths:
   pretrained_model_weights: "rf-detr-nano.pth"
   split_dataset: "split_dataset"
   final_dataset: "Final_dataset"
-  data_yaml: "data.yaml" #In final_dataset
   optuna_json: null  # Auto-generated from study.name
   output_csv: null   # Auto-generated from study.name
   output_json: null  # Auto-generated from study.name

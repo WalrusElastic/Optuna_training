@@ -85,7 +85,7 @@ class TrainingConfig:
             "pretrained_model_weights": self.root / path_config.get("pretrained_model_weights", "model.pth"),
             "split_dataset": self.root / path_config.get("split_dataset", "split_dataset"),
             "final_dataset": self.root / path_config.get("final_dataset", "Final_dataset"),
-            "data_yaml": self.root / path_config.get("final_dataset", "Final_dataset") / path_config.get("data_yaml", "data.yaml"),
+            "data_yaml": self.root / path_config.get("final_dataset", "Final_dataset") / "data.yaml",
             "runs_dir": self.root / path_config.get("runs_dir", "runs"),
             "optuna_json": self.root / (path_config.get("optuna_json") or f"{self.study_name}_optuna_storage.json"),
             "output_csv": self.root / (path_config.get("output_csv") or f"{self.study_name}_output.csv"),
