@@ -203,7 +203,9 @@ The pipeline optimizes based on:
    ```
 
 2. The parameter should be automatically updated if it is part of ``rfdetr parameters`` in the yaml. As of 14/6/2026, preprocessing and augmentations tuning are not automatically supported. 
+
 <br> 
+
 To debug, check that ``applyOptunaSuggestions()`` in ``preparetraining.py`` supports your data type. 
    ```python
       if param_type == "float":  # For tuning floats
