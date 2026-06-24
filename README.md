@@ -1,298 +1,275 @@
+# RF-DETR Optuna Training Manual
 
-# RFDETR Optuna Training Manual
-
-
+**Version 0.1.0** — see [CHANGELOG.md](meta/CHANGELOG.md) for release notes. The version is
+defined in [`meta/version.py`](meta/version.py) and logged at the start of each run.
 
 ## Overview
 
-This is an **Optuna-based hyperparameter optimization pipeline** for training YOLO11 segmentation models. The pipeline automatically runs multiple training trials with different hyperparameters, evaluates them on validation and test datasets, and identifies the best-performing configuration. <br>
+An **Optuna-based hyperparameter optimization pipeline** for training RF-DETR object
+detection models. Each Optuna *trial* augments the dataset, trains an RF-DETR model,
+evaluates it on the validation and test splits, and returns a score. Optuna uses those
+scores to search the configured hyperparameter space across many trials and track the
+best configuration.
 
-The pipeline is designed to: <br>
+A single trial runs this pipeline (see `objective()` in [`rfdetr_train.py`](rfdetr_train.py)):
 
-1. **Optimize custom hyperparameters** (e.g., brightness, contrast, sharpness, mosaic ratio, mixup) using Optuna's Bayesian optimization
+1. **Trial setup** – overlay this trial's Optuna suggestions onto a per-trial copy of the config
+2. **Preprocessing** – augment the split dataset into a YOLO-format "final" dataset
+3. **Training** – launch the RF-DETR worker subprocess on the prepared data
+4. **Validation** – extract the best-epoch validation metrics
+5. **Testing** – run inference + evaluation on the held-out test set
+6. **Scoring** – combine validation/test metrics into the objective score
+7. **Logging** – persist params + metrics to JSON/CSV and the Optuna store
 
-2. **Generate comprehensive metrics** including per-class precision, recall, and mAP scores
-3. **Automatically track and compare trials** across multiple runs
-4. **Save detailed results** in CSV and JSON formats for analysis
-<br>
+---
+
+## Project Structure
+
+```
+optuna_pipeline_rfdetr/
+├── rfdetr_train.py              # MAIN entry point — run this
+├── config.py                    # ALL configuration (the Config class)
+├── rf-detr-nano.pth             # your pretrained RF-DETR weights
+├── split_dataset/               # INPUT: train/valid/test splits (YOLO format, pre-augmentation)
+│   ├── train/   (image1.tif + image1.txt together in one folder)
+│   ├── valid/
+│   └── test/
+├── Final_dataset/               # OUTPUT: augmented dataset (auto-generated each trial)
+├── runs/                        # per-trial training outputs
+└── utils/
+    ├── config_loader.py         # loads config.py -> TrainingConfig; Optuna search-space logic
+    ├── preprocessing_utils.py   # image augmentation / upscaling
+    ├── rf_detr_distributed_worker.py  # the subprocess that actually trains RF-DETR
+    ├── rf_detr_extract_utils.py # parse metrics.csv from training output
+    ├── rf_detr_prediction_utils.py    # run inference on the test set
+    ├── yolo_evaluation_utils.py # evaluate predictions vs. ground truth
+    ├── data_logging_utils.py    # write results to JSON/CSV
+    └── optuna_utils.py          # Optuna study persistence
+```
+
+The dataset splits use `train` / `valid` / `test`, and each split holds the images
+(`.tif`) and YOLO-format labels (`.txt`) **in the same folder**.
+
+---
+
 ## Quick Start
 
-### Prequisites
+### Prerequisites
+- Python 3.10+ with PyTorch + CUDA
+- `pip install -r requirements.txt`
 
-1. **Python 3.10+** with PyTorch ad CUDA support
-2. **Required packages** (and hope you venv is blessed)
-``` 
-pip install -r requirements.txt
+### Run
+
+```bash
+python rfdetr_train.py
 ```
 
-### Setup
-1. **Prepare your folder structure**
->```
-> optuna_train_pipeline/
->├── rf_detr_train.py             (main script - modify optuna "objective" function for customised optimisation)
->├── config_loader.py                  
->├── config.yaml                  (configure paths and default >parameters here)
->├── preparetraining.py
->├── rf_detr_threshold_sweep.py
->├── cli.py
->├── rf-detr-nano.pth             (your pretrained rf-detr weights)
->├── split_dataset/             (input: train/val/test splits (in yolo seg format))
->│   ├── train/
->│   │   ├── image1.tif              (note image and labels together in 1 folder)
->│   │   └── label1.txt
->│   └── val/
->│   │   ├── image1.tif
->│   │   └── label1.txt
->│   └── test/
->│   │   ├── image1.tif
->│   │   └── label1.txt
->├── utils/                      (utility modules)
->│   ├── preprocessing_utils.py
->│   ├── data_logging_utils.py
->│   ├── dataset_converter.py
->│   ├── rf_detr_distributed_worker.py
->│   ├── rf_detr_extract_utils.py
->│   ├── rf_detr_prediction_utils.py
->│   ├── rf_detr_trainer.py
->│   ├── yolo_evaluation_utils.py
->│   ├── yolo_dataset_utils.py
->│   └── optuna_utils.py
->└── README.md
->```
+Run it **from the project root** (so `utils` is importable). All settings come from
+[`config.py`](config.py) — there are no command-line arguments.
 
-2. **Configure** ```config.yaml```:
+To accumulate more trials, just run it again: results append to the CSV/JSON and the
+Optuna study resumes from `*_optuna_storage.json`.
 
-A template of the yaml is included in the repo. Note that **filepaths should be relative to** ```rf-detr-train.py``` and be written as strings. After editing the study **name** and **classes**, the key sections to configure would be: 
-- paths
-- preprocessing
-- rfdetr_training
-- optuna
+---
 
-```yaml
-# Optuna RF-DETR Training Configuration
-study:
-  name: "test_study"
+## Configuration (`config.py`)
 
-classes:
-  - "Class_1"
+All configuration lives in a single `Config` class. Each **dict attribute** of `Config`
+is a config *section*, exposed on the loaded config object as `config.<section>`:
 
-paths:
-    pretrained_model_weights: "rf-detr-nano.pth"
-```
+| Section | Purpose |
+|---|---|
+| `study` | study name, class names, and `optimization_target_class` |
+| `paths` | all file/dir paths, resolved against `config.py`'s own directory |
+| `preprocessing_config` | input/training image sizes, label editing, and the brightness/contrast/sharpness augmentation values |
+| `rfdetr_parameters` | parameters passed straight to RF-DETR `model.train()` (lr, epochs, loss coefs, `aug_config`, ...) |
+| `rfdetr_dataset` | test threshold, IoU threshold, GPU count |
+| `optuna` | `n_trials`, `n_jobs`, the `optimize` switch, and the `search_space` |
 
-    
-&emsp;&emsp;2.1 **Paths**
+Notes:
+- **Paths own their resolution.** `paths["root"]` is `config.py`'s directory; every other
+  path is built from it. The loader takes paths as-is.
+- **No hidden defaults.** Whatever you write in `config.py` is what the pipeline uses;
+  a missing required section/key fails fast at load with a clear error.
+- **`rfdetr_parameters`** is annotated with each parameter's RF-DETR default in a comment,
+  so you can see at a glance where you deviate.
+- **`aug_config`** is one of the RF-DETR augmentation presets, imported at the top of
+  `config.py` (`AUG_CONSERVATIVE` / `AUG_AGGRESSIVE` / `AUG_AERIAL` / `AUG_INDUSTRIAL`).
+  It's the actual preset object, not a string.
 
-Below are the paths that you will probably edit between experiments. You can set other paths if needed, but they should be left to default values. Ensure that **split_dataset** is in the right format and location. It should contain the images and labels for training, **before any preprocessing**.
-```yaml
-paths:
-  pretrained_model_weights: "rf-detr-nano.pth"
-  split_dataset: "split_dataset"              # original INPUT dataset in yolo format (see section 1)
-  final_dataset: "Final_dataset"              # augmented dataset, wil be generated automatically
-  runs_dir: "runs"                            # folder where runs are stored
-  params_json: "training_params.json"         # json where training parameters for the run is stored
-```
+To change a *fixed* hyperparameter (not tuned), just edit its value in the relevant
+section — e.g. set `"epochs": 50` in `rfdetr_parameters`.
 
+---
 
-&emsp;&emsp;2.2 **Preprocessing**
+## Tuning Hyperparameters with Optuna
 
-As of now these are the necessary inputs, used to determine upscale factor. When fine tuning of preprocessing strength is implemented, the parameters will be input here.
+Optuna tuning is controlled entirely by the `optuna` section.
 
-Note that **augmentations** (via albumentations) has its own section, but are not necessary to configure (default = 0).
-```yaml
-preprocessing:
-  input_size: 256         # Size of raw image slices (in split dataset)
-  training_size: 1024      # Size of upscaled images, which the model will train on (4x upscaling)
-```
+### 1. Turn optimization on
 
-&emsp;&emsp;2.3 **rfdetr_training**
-
-These are the commonly edited training parameters. ```dataset_dir``` is the folder containing the final **augmented** dataset, which rfdetr will train on, and defaults to ```Final Dataset```. Also note that ```aug_config``` refers to the **default rfdetr augmentations** which are imported. Simply enter the string version of whichever set of augmentations you wish to apply.
-
-The rest of the common hyperparameters (lr, dropout, weight decay) should be implemented here. Check the template for the full list of configurable parameters. 
-```yaml
-rfdetr_training:
-  dataset_dir: None  # Defaults to Final Dataset path if None
-  batch_size: 1
-  grad_accum_steps: 4
-  epochs: 1
-  early_stopping_patience: 1
-  aug_config: "AUG_AGGRESSIVE" #String version of rf-detr augmentation config.
-```
-&emsp;&emsp;2.4 **Optuna**
-
-This is where you can configure the settings for Optuna. This mainly includes:
-
-- n_trials: Number of trials that optuna will run
-- search_space: Parameters which optuna will optimise
-
-In the example below, ```lr``` is being tuned. The configs follow the optuna ```.suggest``` arguments, usually the min and max values that you want optuna to try. This includes step size for ```int```. 
-
-```yaml
-optuna:
-  n_trials: 1
-  n_jobs: 1
-  optimize: false  # Set to true to use Optuna hyperparameter optimization
-  search_space:  #parameter for optuna to optimise. currently limited to rf-detr params.
-    lr:
-      type: float
-      low: 1e-5
-      high: 1e-3
-      log: true
-```
-## Running the Pipeline
-
-    python rf_detr_train.py
-
-The script will run an optuna pipeline to optimise model performance accross a set of trials. Each trial will:
-
-1. **Suggest** Parameters for optimization
-2. **Preprocess** the dataset (augmentation, splits)
-3. **Train** the rfdetr model for one trial
-4. **Evaluate** on validation and test sets
-5. **Extract metrics** per class and overall
-6. **Save results** to CSV, JSON, and visualizations
-
-You can also input arguments via the CLI, if you want to quickly run trials with other parameters. Eg to run 200 epochs:
-
-    python rf_detr_train.py --epochs 200
-
-Use ```--help``` to see a full list of CLI arguments. 
-
-## Output Files
-
-After each trial, you'll find:
-
-- **`runs/trial_0/`** - Trial outputs directory
-  - `weights/best.pt` - Best model weights
-  - `results.csv` - Training metrics per epoch
-  - `test_results/` - Predictions and confusion matrix
-
-As the trials progress, you will also find:
-
-- **`study_name_output.csv`** - All trials comparison (append mode)
-  - Columns: hyperparameters, validation metrics, test metrics
-  
-- **`study_name_output.json`** - Detailed per-trial results
-  
-- **`study_name_optuna_storage.json`** - Optuna study state (for resuming)
-
-## Optimization Metrics
-
-The pipeline optimizes based on:
-- **Custom scoring**: Currently uses `class_2_mAP50-95` (modify in `objective()`)
-- You can change the class to optimise in the configs
-
-## Customization
-
-### Add New Optimization Parameters
-
-**THIS IS BEING UPDATED TO BE FULLY MODULAR VIA THE YAML -@Z113x**
-
-1. In `config.yaml`, add a `parameter` under search space:
-   ```yaml
-     search_space:
-        new_params:
-          type: int
-          low: 1
-          high: 10
-          step: 2
-        new_param_2:
-          type: float
-          ... rest of params
-   ```
-
-2. The parameter should be automatically updated if it is part of ``rfdetr parameters`` in the yaml. As of 14/6/2026, preprocessing and augmentations tuning are not automatically supported. 
-
-<br> 
-
-To debug, check that ``applyOptunaSuggestions()`` in ``preparetraining.py`` supports your data type. 
-   ```python
-      if param_type == "float":  # For tuning floats
-      val = trial.suggest_float(
-          name,
-          float(spec["low"]),
-          float(spec["high"]),
-          log=bool(spec.get("log", False))
-      )
-      elif param_type == "int": # For tuning ints
-          if "step" in spec:
-              val = trial.suggest_int(
-                  name,
-                  int(spec["low"]),
-                  int(spec["high"]),
-                  step=int(spec["step"])
-              )
-          else:
-            #... rest of data types
-   ```
-3. log results in appropriate dictionary to be captured in CSV and JSON outputs
-
-### Change Evaluation Metric
-
-Modify the scoring function in `objective()`:
 ```python
-# Current: class 2 mAP50-95
-score = round(float(results.box.class_result(2)[3]), 5)
-
-# Alternative: average mAP across all classes
-class_maps = [results.box.class_result(i)[3] for i in range(len(config.classes))]
-score = round(float(np.mean(class_maps)), 5)
+optuna = {
+    "n_trials": 20,        # how many trials Optuna runs
+    "n_jobs": 1,
+    "optimize": True,      # <-- must be True, or the search space is ignored
+    "search_space": { ... },
+}
 ```
 
+If `optimize` is `False`, every trial uses the fixed config values (no suggestions drawn).
 
-## Workflow Example
+### 2. Declare what to tune in `search_space`
 
-1. **Setup once**:
-   - Place model weights: `rf-detr-nano.pth`
-   - Place dataset: `split_dataset/train/`, `split_dataset/val/`, etc.
-   - Edit `configs.yaml` with your class names and paths
-   - Choose parameters to optimize in `train.py`
+The `search_space` **mirrors the config tree**. The top-level keys are section names
+(they must match a `Config` section, e.g. `"rfdetr_parameters"`), and below that you
+name the parameter(s) to tune. Each *leaf* is a **parameter spec** — a dict containing a
+`"type"` key:
 
-2. **Run optimization**:
-   ```bash
-   python rf_detr_train.py
+```python
+"search_space": {
+    "rfdetr_parameters": {
+        "lr":           {"type": "float", "low": 1e-5, "high": 1e-3, "log": True},
+        "weight_decay": {"type": "float", "low": 1e-6, "high": 1e-3, "log": True},
+        "lr_drop":      {"type": "int",   "low": 10,   "high": 100,  "step": 10},
+    },
+    "preprocessing_config": {
+        "brightness":   {"type": "float", "low": -0.3, "high": 0.3},
+    },
+}
+```
+
+**Supported spec types** (mirroring Optuna's `suggest_*`):
+
+| `type` | Required keys | Optional keys |
+|---|---|---|
+| `float` | `low`, `high` | `log` (bool) |
+| `int` | `low`, `high` | `step` (int) |
+| `categorical` | `choices` (list) | — |
+
+### 3. Tuning nested values (e.g. inside `aug_config`)
+
+The search space is **recursive**: any dict *without* a `"type"` key is treated as a
+container to descend into. So you can tune values nested deep inside a section — for
+example, an augmentation probability inside `aug_config`:
+
+```python
+"search_space": {
+    "rfdetr_parameters": {
+        "aug_config": {
+            "HorizontalFlip": {"p": {"type": "float", "low": 0.0, "high": 1.0}},
+            "ColorJitter":    {"brightness": {"type": "float", "low": 0.0, "high": 0.5}},
+        },
+    },
+}
+```
+
+This descends `rfdetr_parameters → aug_config → HorizontalFlip → p` and tunes that leaf.
+
+### How it works (so the behaviour is predictable)
+
+- Each trial gets a **deep-ish copy** of the config with suggestions overlaid; the base
+  config (including the shared `aug_config` preset) is never mutated.
+- The Optuna parameter name is the **dotted path** (e.g.
+  `rfdetr_parameters.aug_config.HorizontalFlip.p`), which keeps names unique and is also
+  the key used in the logged results.
+- A search-space section/path that doesn't match the config is **warned and skipped**
+  (it won't crash the run).
+
+The tuned value automatically flows into the trial because the pipeline reads everything
+from the per-trial config — no other code changes needed.
+
+---
+
+## Modifying the Pipeline & Adding New Tunable Hyperparameters
+
+### A. Tune a parameter that already exists in the config
+
+If the parameter is already a key in some `Config` section, **no code changes are
+needed** — just add it to `search_space` at the matching path (see above). This covers
+all of `rfdetr_parameters`, `preprocessing_config`, `rfdetr_dataset`, and anything nested
+within them.
+
+### B. Add a brand-new config section, then tune it
+
+Sections are auto-discovered: any **dict attribute** of `Config` becomes
+`config.<section>`. To add one:
+
+1. Add the dict to `Config` in `config.py`:
+   ```python
+   class Config:
+       my_section = {
+           "some_param": 0.5,
+       }
    ```
+2. Read it where you need it in `objective()` (or a helper), e.g.
+   `config.my_section["some_param"]`.
+3. Tune it by mirroring the name in `search_space`:
+   ```python
+   "search_space": {
+       "my_section": {"some_param": {"type": "float", "low": 0.0, "high": 1.0}},
+   }
+   ```
+   The section name in `search_space` **must equal** the `Config` attribute name.
 
-3. **Run multiple times** (to accumulate trials):
-   - Repeat step 2; results append to CSV/JSON
-   - Optuna tracks best trial automatically
+> A section must be a **dict** — that's how the loader distinguishes sections from helper
+> attributes. A scalar top-level attribute would be ignored.
 
-4. **Analyze results**:
-   - Open `study_name_output.csv` in Excel/pandas
-   - Compare hyperparameters vs. metrics
-   - Identify best configuration
+### C. Change what the objective actually does
+
+`objective()` in [`rfdetr_train.py`](rfdetr_train.py) is the per-trial recipe, split into
+the 7 numbered steps from the Overview. Common edits:
+
+- **Augmentation pipeline** — the `A.Compose([...])` block (step 2) builds the
+  Albumentations transforms from `preprocessing_config`. Add/reorder transforms here; to
+  make a new transform parameter tunable, read it from `preprocessing_config` and add it
+  to `search_space`.
+- **Scoring** — step 6 computes the value Optuna optimizes. It currently combines the
+  target class's validation AP and test mAP50:
+  ```python
+  target_idx = config.study["optimization_target_class"] or 0
+  target_class = classes[target_idx]
+  score = 1 / (1 / validation_results[f"val/AP/{target_class}"]
+               + 1 / test_results[f"{target_class}_map_50"])
+  ```
+  Change this expression to optimize a different metric (e.g. average over all classes).
+- **What gets logged** — step 7 builds `combined_params` and `combined_metrics`. Add
+  entries here to capture extra values in the CSV/JSON outputs.
+
+### D. Add a new spec *type*
+
+The suggestion logic lives in `TrainingConfig._suggest_value()` in
+[`utils/config_loader.py`](utils/config_loader.py). It maps a spec's `"type"` to the
+matching `trial.suggest_*` call. Add an `elif` branch there to support a new type. The
+recursion/tree-walking in `_apply_search_space()` doesn't need to change.
+
+---
+
+## Outputs
+
+Per trial:
+- **`runs/trial_<n>/`** — training outputs (`metrics.csv`, `checkpoint_best_total.pth`,
+  `test_predictions/`).
+
+Accumulated across trials (named after `study.name`):
+- **`<study>_output.csv`** — one row per trial: params + validation/test metrics (append mode).
+- **`<study>_output.json`** — detailed per-trial params and metrics.
+- **`<study>_optuna_storage.json`** — Optuna study state, used to resume.
+
+---
 
 ## Troubleshooting
 
-**CUDA Out of Memory**
-- Reduce `batch` size in `configs.py`
-- Reduce `imgsz` (image size)
+**Config fails to load** — the loader fails fast with a clear message; check the named
+section/key exists in `config.py` (no defaults are injected).
 
-**Trials failing with tensor errors**
-- Check dataset format (must be YOLO segmentation format)
-- Ensure labels match image dimensions
+**A search-space entry seems ignored** — confirm `optuna["optimize"]` is `True`, and that
+the section name matches a `Config` section exactly and the leaf has a `"type"` key. A
+mismatch is logged as a warning and skipped.
 
-**Optuna not trying new parameters**
-- Check that `trial.suggest_*()` calls are uncommented in `objective()`
-- Verify parameter ranges are reasonable
+**CUDA out of memory** — lower `batch_size` (and/or `resolution`) in `rfdetr_parameters`,
+or raise `grad_accum_steps`.
 
-**Results not updating**
-- Check that output paths exist: `runs/`, `Final_dataset/`
-- Verify write permissions on CSV/JSON files
-
-## File Structure Details (Outdated 14/6/2026)
-
-| File | Purpose |
-|------|---------|
-| `train.py` | Main training script (run this) |
-| `configs.py` | All configuration: paths, classes, parameters |
-| `utils/preprocessing_utils.py` | Dataset augmentation and preprocessing |
-| `utils/yolo_dataset_utils.py` | Custom YOLO dataset loader with class weighting |
-| `utils/evaluation_utils.py` | Segmentation metrics and confusion matrix |
-| `utils/extract_yolo_data_utils.py` | Extract and format training outputs |
-| `utils/optuna_utils.py` | Optuna study management |
- 
-
-For issues or questions, check the script comments in `objective()` function for parameter-specific guidance.
-
+**Trials fail immediately** — check the `split_dataset` format (images + YOLO `.txt`
+labels together per split) and that `rf-detr-nano.pth` exists at the configured path.
+```
