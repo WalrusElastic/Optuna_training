@@ -1,6 +1,6 @@
 # RF-DETR Optuna Training Manual
 
-**Version 0.1.0** — see [CHANGELOG.md](meta/CHANGELOG.md) for release notes. The version is
+**Version 0.2.0** — see [CHANGELOG.md](meta/CHANGELOG.md) for release notes. The version is
 defined in [`meta/version.py`](meta/version.py) and logged at the start of each run.
 
 ## Overview
@@ -37,7 +37,7 @@ optuna_pipeline_rfdetr/
 ├── Final_dataset/               # OUTPUT: augmented dataset (auto-generated each trial)
 ├── runs/                        # per-trial training outputs
 └── utils/
-    ├── config_loader.py         # loads config.py -> TrainingConfig; Optuna search-space logic
+    ├── config_loader.py         # loads + validates the Config class; Optuna search-space logic
     ├── preprocessing_utils.py   # image augmentation / upscaling
     ├── rf_detr_distributed_worker.py  # the subprocess that actually trains RF-DETR
     ├── rf_detr_extract_utils.py # parse metrics.csv from training output
@@ -211,6 +211,14 @@ Sections are auto-discovered: any **dict attribute** of `Config` becomes
    }
    ```
    The section name in `search_space` **must equal** the `Config` attribute name.
+4. **Collate it into the logged outputs.** Auto-discovery only exposes the section to
+   `objective()`; it is *not* logged automatically. To get its values into the per-trial
+   CSV/JSON, add it to the `combined_params` merge in step 7 of `objective()`:
+   ```python
+   combined_params = {**training_params, **preprocessing_config, **my_section, **suggested_params}
+   ```
+   (Only the *tuned* keys of a section show up via `suggested_params` otherwise — the rest
+   of the section's values are dropped unless you merge the section in here.)
 
 > A section must be a **dict** — that's how the loader distinguishes sections from helper
 > attributes. A scalar top-level attribute would be ignored.
@@ -233,12 +241,13 @@ the 7 numbered steps from the Overview. Common edits:
                + 1 / test_results[f"{target_class}_map_50"])
   ```
   Change this expression to optimize a different metric (e.g. average over all classes).
-- **What gets logged** — step 7 builds `combined_params` and `combined_metrics`. Add
-  entries here to capture extra values in the CSV/JSON outputs.
+- **What gets logged** — step 7 builds `combined_params` and `combined_metrics`, and those
+  are what land in the CSV/JSON. Nothing is logged automatically: a new config section (or
+  any extra value) only appears in the outputs if you merge it in here (see B.4 above).
 
 ### D. Add a new spec *type*
 
-The suggestion logic lives in `TrainingConfig._suggest_value()` in
+The suggestion logic lives in `ConfigLoader._suggest_value()` in
 [`utils/config_loader.py`](utils/config_loader.py). It maps a spec's `"type"` to the
 matching `trial.suggest_*` call. Add an `elif` branch there to support a new type. The
 recursion/tree-walking in `_apply_search_space()` doesn't need to change.

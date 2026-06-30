@@ -2,9 +2,9 @@
 Training configuration for the Optuna RF-DETR pipeline.
 
 Plain-Python config expressed as a class (easy to read / comment, with IDE support).
-Each public *dict* attribute of Config is a config section, exposed on the loaded
-TrainingConfig as ``config.<section>``. Paths are resolved here against this file's
-directory (``paths["root"]``); the loader takes them as-is. Only dict attributes are
+Each public *dict* attribute of Config is a config section, read as ``config.<section>``
+(the loader returns this class directly, no wrapper). Paths are resolved here against this
+file's directory (``paths["root"]``); the loader takes them as-is. Only dict attributes are
 treated as sections; any non-dict attributes would be ignored as helpers.
 """
 
@@ -30,25 +30,23 @@ class Config:
 
     # Paths are resolved against this file's directory (paths["root"]); the loader takes
     # them as-is. "root" doubles as the project root used for subprocess working dirs.
+    # Per-trial / derived paths (data.yaml, params JSON, training worker script) are built
+    # from these in rfdetr_train.py's TRIAL SETUP section.
     paths = {"root": Path(__file__).resolve().parent}
     paths.update({
         "pretrained_model_weights": paths["root"] / "rf-detr-nano.pth",
         "split_dataset": paths["root"] / "split_dataset",
         "final_dataset": paths["root"] / "Final_dataset",
-        "data_yaml": paths["root"] / "Final_dataset" / "data.yaml",
         "runs_dir": paths["root"] / "runs",
         # Output artifacts named after the study.
         "optuna_json": paths["root"] / f"{study['name']}_optuna_storage.json",
         "output_csv": paths["root"] / f"{study['name']}_output.csv",
         "output_json": paths["root"] / f"{study['name']}_output.json",
-        "params_json": paths["root"] / "training_params.json",
-        "training_worker_script": paths["root"] / "utils" / "rf_detr_distributed_worker.py",
     })
 
     preprocessing_config = {
         "input_size": 256,
         "training_size": 256,
-        "edit_labels": False,
         # Albumentation parameters (applied per trial in the A.Compose pipeline).
         "brightness": -0.12655,
         "contrast": 0.18471,

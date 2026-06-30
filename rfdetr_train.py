@@ -1,6 +1,7 @@
 """
 Script to train RF-DETR on a dataset with Optuna-suggested parameters, within a folder.
 Updates augmentation and final dataset folders for each trial and trains the model.
+Credit: Kay Den (master_b8)
 """
 
 import json
@@ -13,6 +14,7 @@ import time
 from pathlib import Path
 
 import albumentations as A
+import cv2
 import optuna
 import torch
 import yaml
@@ -20,7 +22,7 @@ from tqdm import tqdm
 from rfdetr import RFDETRNano
 
 from meta import __version__
-from utils.config_loader import ConfigLoader, TrainingConfig
+from utils.config_loader import ConfigLoader
 from utils.rf_detr_extract_utils import RFDETRExtractor
 from utils.preprocessing_utils import PreprocessingUtils
 from utils.data_logging_utils import DataLogger
@@ -28,9 +30,11 @@ from utils.optuna_utils import OptunaTrialManager
 from utils.rf_detr_prediction_utils import RFDETRPredictor
 from utils.yolo_evaluation_utils import YOLOBBSEvaluator
 
+
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "..")))
 os.environ["ALBUMENTATIONS_DISABLE"] = "1"
 os.environ["USE_LIBUV"] = "0"  # Disable libuv to prevent subprocess issues on Windows
+EPSILON = 1e-8  # Small constant to avoid division by zero in scoring
 
 # Setup logging
 logging.basicConfig(
@@ -42,100 +46,14 @@ logger = logging.getLogger(__name__)
 logger.info(f"CUDA Available: {torch.cuda.is_available()}")
 
 
-# ========================== DATA PREPROCESSING ==========================
-
-def augment_and_prepare_final_dataset(
-    transforms: A.Compose,
-    split_path: Path,
-    final_path: Path,
-    input_size: int = 512,
-    output_size: int = 1024,
-    edit_labels: bool = False,
-) -> None:
-    """
-    Augment the split dataset and write it directly in YOLO final format.
-
-    Processes and augments all images in train/val/test from split_path,
-    writing images and labels into final_path with YOLO layout (split/images, split/labels).
-    In the split path, the images and labels must be in the same folder for each of the train, val and test splits.
-
-    Args:
-        transforms (A.Compose): Albumentations transformation pipeline (passed to generate_transform).
-        split_path (Path): Root path containing train/val/test subdirectories.
-        final_path (Path): Output root for final dataset (train/images, train/labels, etc.).
-        input_size (int): Input image size for preprocessing (default: 512).
-        output_size (int): Output image size after preprocessing (default: 1024).
-        edit_labels (bool): Determines if the labels are edited during augmentation. NOTE: if any of the albumentation augmentations could change the polgon points, set this to True.
-
-    Input:  split_path/train|val|test with .tif and .txt
-    Output: final_path/train|val|test/images and final_path/train|val|test/labels
-    """
-    logger.info(f"Starting data augmentation from {split_path} to {final_path}")
-    if final_path.exists():
-        logger.info(f"Removing existing final dataset directory: {final_path}")
-        shutil.rmtree(final_path)
-
-    for split in ['train', 'valid', 'test']:
-        src_dir = split_path / split
-        if not src_dir.exists():
-            logger.warning(f"Skipping {split} split - directory not found")
-            continue
-
-        logger.info(f"Processing {split} split from {src_dir}")
-        images_dir = final_path / split / "images"
-        labels_dir = final_path / split / "labels"
-        images_dir.mkdir(parents=True, exist_ok=True)
-        labels_dir.mkdir(parents=True, exist_ok=True)
-
-        tif_files = [f for f in os.listdir(src_dir) if f.endswith('.tif')]
-        logger.info(f"Found {len(tif_files)} TIF files in {split} split")
-        for file_name in tqdm([str(f) for f in tif_files], desc=f"Augmenting {split} split"):
-            tif_path = str(src_dir / file_name)
-            txt_path = str(src_dir / f"{os.path.splitext(file_name)[0]}.txt")
-            PreprocessingUtils.generate_transform(
-                tif_path,
-                txt_path,
-                str(images_dir),
-                str(labels_dir),
-                transforms,
-                edit_labels=edit_labels,
-                iterations=1,
-                input_img_size=input_size,
-                output_img_size=output_size,
-            )
-
-    logger.info(f"Data augmentation completed. Final dataset saved to {final_path}")
-
-
-# ========================== SETTING UP RFDETR YAML ==========================
-
-def setup_yaml(yaml_path: Path, dataset_path: Path, classes) -> None:
-    """Create data.yaml for YOLO."""
-    logger.info(f"Setting up YOLO data.yaml at {yaml_path}")
-    data_yaml = {
-        "path": str(dataset_path),
-        "train": "train",
-        "val": "valid",
-        "test": "test",
-        "augment": True,
-        "channels": 1,
-        "names": {index: name for index, name in enumerate(classes)},
-    }
-
-    with open(yaml_path, 'w') as f:
-        yaml.safe_dump(data_yaml, f)
-
-    logger.info(f"YOLO data.yaml created with {len(classes)} classes")
-
-
 # ========================== MAIN OBJECTIVE FUNCTION ==========================
 
-def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
+def objective(trial: optuna.trial.Trial, config: type) -> float:
     """
     Optuna objective: run one full RF-DETR trial and return its optimization score.
 
     Pipeline (per trial):
-        1. Trial setup   - overlay this trial's Optuna suggestions onto a per-trial config.
+        1. Trial setup   - overlay this trial's Optuna suggestions onto the config.
         2. Preprocessing - augment the split dataset into a YOLO-format final dataset.
         3. Training      - launch the RF-DETR worker subprocess on the prepared data.
         4. Validation    - extract the best-epoch validation metrics from training output.
@@ -145,7 +63,7 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
 
     Args:
         trial: Optuna trial, providing this run's hyperparameter suggestions.
-        config: Base TrainingConfig loaded from config.py.
+        config: The Config class loaded from config.py (read as config.<section>).
 
     Returns:
         The optimization score for this trial (higher is better).
@@ -153,20 +71,34 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
     logger.info(f"[Trial {trial.number}] {'=' * 16} Starting trial {trial.number} {'=' * 16}")
 
     # ============================= 1. TRIAL SETUP =============================
-    # Overlay this trial's Optuna suggestions onto a per-trial copy of the config,
-    # then pull out the sections the body uses (single source of truth for the trial).
-    trial_config, suggested_params = config.build_trial_config(trial)
+    # Overlay this trial's Optuna suggestions onto the config in place, then pull out the
+    # sections the body uses (single source of truth for the trial).
+    suggested_params = ConfigLoader.build_trial_config(config, trial)
     if suggested_params:
         logger.info(f"[Trial {trial.number}] Optuna suggestions this trial: {suggested_params}")
 
     paths = config.paths
     classes = config.study["classes"]
-    trial_path = paths["runs_dir"] / f'trial_{trial.number}'
 
-    training_params = dict(trial_config.rfdetr_parameters)
+    training_params = dict(config.rfdetr_parameters)
+    preprocessing_config = config.preprocessing_config
+    rfdetr_dataset = config.rfdetr_dataset
+
+    # --- Resolve every path this trial uses (single source of truth for the trial) ---
+    root = paths["root"]
+    split_path = paths["split_dataset"]
+    final_path = paths["final_dataset"]
+    trial_path = paths["runs_dir"] / f'trial_{trial.number}'
+    data_yaml_path = final_path / "data.yaml"
+    params_json_path = root / "training_params.json"
+    training_worker_script = root / "utils" / "rf_detr_distributed_worker.py"
+    rf_detr_val_metrics_path = trial_path / "metrics.csv"
+    test_predictions_dir = trial_path / "test_predictions"
+    model_path = trial_path / "checkpoint_best_total.pth"
+
+    # Inject the pipeline-determined paths into the training params.
     training_params["output_dir"] = str(trial_path)
-    preprocessing_config = trial_config.preprocessing_config
-    rfdetr_dataset = trial_config.rfdetr_dataset
+    training_params["dataset_dir"] = str(final_path)
 
     # ============================= 2. PREPROCESSING =============================
     # Build the (fixed-per-trial) augmentation pipeline, then write the YOLO-format
@@ -186,19 +118,59 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
         A.Sharpen(alpha=(sharpness, sharpness), lightness=(0.8, 0.8), p=1.0),
     ])
 
-    augment_and_prepare_final_dataset(
-        transforms,
-        paths["split_dataset"],
-        paths["final_dataset"],
-        input_size=preprocessing_config["input_size"],
-        output_size=preprocessing_config["training_size"],
-        edit_labels=preprocessing_config["edit_labels"],
-    )
-    setup_yaml(
-        paths["data_yaml"],
-        paths["final_dataset"],
-        classes,
-    )
+    # --- Augment the split dataset and write it in YOLO final format ---
+    input_size = preprocessing_config["input_size"]
+    output_size = preprocessing_config["training_size"]
+
+    if final_path.exists():
+        logger.info(f"[Trial {trial.number}] Removing existing final dataset directory: {final_path}")
+        shutil.rmtree(final_path)
+
+    for split in ['train', 'valid', 'test']:
+        src_dir = split_path / split
+        if not src_dir.exists():
+            logger.warning(f"[Trial {trial.number}] Skipping {split} split - directory not found")
+            continue
+
+        logger.info(f"[Trial {trial.number}] Processing {split} split from {src_dir}")
+        images_dir = final_path / split / "images"
+        labels_dir = final_path / split / "labels"
+        images_dir.mkdir(parents=True, exist_ok=True)
+        labels_dir.mkdir(parents=True, exist_ok=True)
+
+        tif_files = [f for f in os.listdir(src_dir) if f.endswith('.tif')]
+        logger.info(f"[Trial {trial.number}] Found {len(tif_files)} TIF files in {split} split")
+        for file_name in tqdm([str(f) for f in tif_files], desc=f"Augmenting {split} split"):
+            base_name = os.path.splitext(file_name)[0]
+            tif_path = str(src_dir / file_name)
+            txt_path = str(src_dir / f"{base_name}.txt")
+
+            # Preprocess the source image, step by step.
+            img = cv2.imread(tif_path, cv2.IMREAD_UNCHANGED)
+            img = PreprocessingUtils.minmax_norm(img, 0.5)                            # contrast normalize
+            img = PreprocessingUtils.apply_cubic_convolution(img, output_size / input_size)  # cubic upscale
+            img = PreprocessingUtils.convert_16bit_to_8bit_minmax(img)                # 16-bit -> 8-bit
+
+            # Apply the albumentations transform, then write the augmented image + copy labels.
+            augmented = transforms(image=img)
+            aug_img_path = str(images_dir / f"{base_name}.tif")
+            aug_txt_path = str(labels_dir / f"{base_name}.txt")
+            cv2.imwrite(aug_img_path, augmented["image"])
+            shutil.copy(txt_path, aug_txt_path)
+
+    # --- Write data.yaml describing the YOLO-format final dataset ---
+    data_yaml = {
+        "path": str(final_path),
+        "train": "train",
+        "val": "valid",
+        "test": "test",
+        "augment": True,
+        "channels": 1,
+        "names": {index: name for index, name in enumerate(classes)},
+    }
+    with open(data_yaml_path, 'w') as f:
+        yaml.safe_dump(data_yaml, f)
+    logger.info(f"[Trial {trial.number}] data.yaml created with {len(classes)} classes")
 
     # ============================= 3. TRAINING =============================
     # Serialize the resolved training params, then launch the RF-DETR worker subprocess.
@@ -206,11 +178,7 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
 
     trial_path.mkdir(parents=True, exist_ok=True)
 
-    # dataset_dir is pipeline-determined: the augmented dataset is written to final_dataset.
-    training_params["dataset_dir"] = str(paths["final_dataset"])
-
     # Hand the params to the worker subprocess via JSON.
-    params_json_path = paths["params_json"]
     if params_json_path.exists():
         logger.info(f"[Trial {trial.number}] Removing existing params JSON at {params_json_path}")
         params_json_path.unlink()
@@ -223,14 +191,14 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
         logger.info(f"[Trial {trial.number}] Running on Windows: using direct subprocess (no torch.distributed)")
         launch_cmd = [
             sys.executable,
-            str(paths["training_worker_script"]),
+            str(training_worker_script),
             "--pretrain-weights",
             str(paths["pretrained_model_weights"]),
             "--params-json",
             str(params_json_path),
         ]
         logger.info(f"[Trial {trial.number}] Launching training: {' '.join(launch_cmd)}")
-        proc = subprocess.run(launch_cmd, cwd=str(paths["root"]))
+        proc = subprocess.run(launch_cmd, cwd=str(root))
         if proc.returncode != 0:
             logger.error(f"[Trial {trial.number}] Training subprocess failed with code {proc.returncode}")
             raise RuntimeError(
@@ -244,14 +212,14 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
             "-m",
             "torch.distributed.run",
             f"--nproc_per_node={rfdetr_dataset['num_gpus']}",
-            str(paths["training_worker_script"]),
+            str(training_worker_script),
             "--pretrain-weights",
             str(paths["pretrained_model_weights"]),
             "--params-json",
             str(params_json_path),
         ]
         logger.info(f"[Trial {trial.number}] Launching distributed training: {' '.join(launch_cmd)}")
-        proc = subprocess.run(launch_cmd, cwd=str(paths["root"]))
+        proc = subprocess.run(launch_cmd, cwd=str(root))
         if proc.returncode != 0:
             logger.error(f"[Trial {trial.number}] Training subprocess failed with code {proc.returncode}")
             raise RuntimeError(
@@ -265,7 +233,6 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
     # ============================= 4. VALIDATION METRICS =============================
     # Find the best epoch (by early-stopping patience) and read its validation metrics.
     logger.info(f"[Trial {trial.number}] Validation: extracting best-epoch metrics from training output")
-    rf_detr_val_metrics_path = trial_path / "metrics.csv"
     best_epoch = RFDETRExtractor.get_best_epoch(
         rf_detr_val_metrics_path,
         patience=training_params["early_stopping_patience"],
@@ -282,14 +249,12 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
     # ============================= 5. TEST-SET EVALUATION =============================
     # Load the best checkpoint, predict on the test set, then evaluate against ground truth.
     logger.info(f"[Trial {trial.number}] Testing: running inference + evaluation on the test set")
-    test_predictions_dir = trial_path / "test_predictions"
     test_predictions_dir.mkdir(parents=True, exist_ok=True)
-    model_path = trial_path / "checkpoint_best_total.pth"
     model = RFDETRNano(pretrain_weights=str(model_path))
     RFDETRPredictor.predict_image_dir_and_save_bbs_labels(
         model=model,
         classes=classes,
-        input_dir=paths["final_dataset"] / "test" / "images",
+        input_dir=final_path / "test" / "images",
         pred_labels_dir=test_predictions_dir,
         threshold=rfdetr_dataset["test_threshold"],  # low threshold to capture more predictions for mAP50-95
         include_confidence=True,
@@ -297,7 +262,7 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
 
     test_results, _, _ = YOLOBBSEvaluator.evaluate(
         pred_dir=test_predictions_dir,
-        gt_dir=paths["final_dataset"] / "test" / "labels",
+        gt_dir=final_path / "test" / "labels",
         classes=classes,
     )
 
@@ -305,7 +270,7 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
     # Objective = harmonic-style combination of validation AP and test mAP for the target class.
     target_idx = config.study["optimization_target_class"] or 0
     target_class = classes[target_idx]
-    score = 1 / (1 / validation_results[f"val/AP/{target_class}"] + 1 / test_results[f"{target_class}_map_50"])
+    score = 1 / (1 / (validation_results[f"val/AP/{target_class}"] + EPSILON) + 1 / (test_results[f"{target_class}_map_50"] + EPSILON))
 
     logger.info(f"[Trial {trial.number}] Optimization score for '{target_class}': {score:.5f}")
 
@@ -313,10 +278,8 @@ def objective(trial: optuna.trial.Trial, config: TrainingConfig) -> float:
     # Assemble everything that gets persisted (params + metrics), in one place.
     combined_params = {**training_params, **preprocessing_config, **suggested_params}
 
-    combined_metrics = {"best_epoch": best_epoch}
-    combined_metrics.update(validation_results)
-    combined_metrics.update(test_results)
-    combined_metrics["score"] = score
+    combined_metrics = {"best_epoch": best_epoch, **validation_results, **test_results, "score": score}
+
 
     # Convert numpy / WindowsPath / other non-JSON types so results can be serialized.
     corrected_combined_params = DataLogger.make_json_safe(combined_params)

@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-30
+
+Internal restructuring to expose the pipeline's moving parts and simplify configuration.
+No change to what a trial computes - same dataset prep, training, scoring, and outputs.
+
+### Changed
+- **The loader returns the `Config` class directly - the `TrainingConfig` wrapper is gone.**
+  `ConfigLoader.load()` now validates and returns the `Config` class itself, and per-trial
+  Optuna suggestions are overlaid onto that class *in place* (each tunable section rebuilt
+  from a pristine snapshot taken at load, so suggestions never accumulate across trials).
+  No wrapper object is instantiated. `build_trial_config()` is now a `ConfigLoader`
+  static method. Note: in-place mutation assumes trials run sequentially (`n_jobs == 1`).
+- **Per-trial / derived paths moved out of `config.py` into the training script.** The
+  `data.yaml`, training-params JSON, and training-worker-script paths are now built in
+  `rfdetr_train.py`, and *all* per-trial path resolution is collated in one block at the
+  top of `objective()` (the TRIAL SETUP section) as the single source of truth. `config.py`
+  keeps only the root, dataset, and study-named output paths.
+- **Preprocessing is now inlined in `objective()`.** `PreprocessingUtils.generate_transform`
+  and `preprocess_image` are no longer called; the augment-and-write loop spells out each
+  step (image read -> min-max normalize -> cubic upscale -> 16-bit→8-bit -> albumentations
+  transform -> write image + copy labels) so the preprocessing flow is visible end to end.
+- **README**: documented that a new config section must be merged into `combined_params` in
+  step 7 to appear in the CSV/JSON outputs, and refreshed references to the new loader API.
+
+### Removed
+- The `TrainingConfig` class (the loader uses the `Config` class as the config object).
+- The unused `edit_labels` polygon-augmentation path from the per-image preprocessing loop.
+
 ## [0.1.0] - 2026-06-24
 
 Refactor of the pipeline as originally pulled from the repo (an unversioned baseline built
